@@ -574,5 +574,51 @@
   </div>
 </footer>
 
+
+<!-- ویجگت گفت‌وگوی فارسی — متصل به دستیار کلودفلر (dual-diagnosis-clinical-hub) -->
+<script>
+(function () {
+  var API = "https://dual-diagnosis-clinical-hub.elasa2next.workers.dev/api/chat";
+  var DISCLAIMER = "\n\n⚠️ این پاسخ جایگزین مشاوره پزشک نیست.";
+  var btn = document.createElement("button");
+  btn.id = "ddx-chat-btn"; btn.type = "button"; btn.textContent = "💬 پرسش از دستیار";
+  var panel = document.createElement("div"); panel.id = "ddx-chat-panel";
+  panel.innerHTML = '<div id="ddx-chat-head"><b>دستیار تشخیص دوگانه</b>' +
+    '<button id="ddx-chat-close" type="button" aria-label="بستن">×</button></div>' +
+    '<div id="ddx-chat-msgs"></div>' +
+    '<form id="ddx-chat-form"><input id="ddx-chat-in" placeholder="سؤال خود را فارسی بنویسید…" ' +
+    'autocomplete="off" maxlength="500"><button id="ddx-chat-send" type="submit">ارسال</button></form>';
+  document.body.appendChild(btn); document.body.appendChild(panel);
+  var msgs = panel.querySelector("#ddx-chat-msgs");
+  function add(text, who) {
+    var d = document.createElement("div"); d.className = "ddx-msg " + who;
+    d.textContent = text; msgs.appendChild(d); msgs.scrollTop = msgs.scrollHeight; return d;
+  }
+  add("سلام! سؤال بالینی خود را درباره‌ی تشخیص دوگانه بپرسید؛ پاسخ فارسی و با ذکر منابع علمی داده می‌شود.", "bot");
+  btn.onclick = function () { panel.classList.toggle("open");
+    if (panel.classList.contains("open")) panel.querySelector("#ddx-chat-in").focus(); };
+  panel.querySelector("#ddx-chat-close").onclick = function () { panel.classList.remove("open"); };
+  panel.querySelector("#ddx-chat-form").onsubmit = function (e) {
+    e.preventDefault();
+    var inp = panel.querySelector("#ddx-chat-in"), q = inp.value.trim();
+    if (!q) return; inp.value = "";
+    add(q, "user");
+    var busy = add("در حال پاسخ‌گویی…", "bot");
+    panel.querySelector("#ddx-chat-send").disabled = true;
+    fetch(API, { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ question: q, role: "patient" }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        busy.textContent = (d.answer || d.error || "پاسخی دریافت نشد.") +
+          (d.answer ? DISCLAIMER : "");
+        msgs.scrollTop = msgs.scrollHeight;
+      })
+      .catch(function () {
+        busy.textContent = "خطای ارتباط با دستیار. اتصال اینترنت را بررسی و دوباره تلاش کنید.";
+      })
+      .finally(function () { panel.querySelector("#ddx-chat-send").disabled = false; });
+  };
+})();
+</script>
 </body>
 </html>
