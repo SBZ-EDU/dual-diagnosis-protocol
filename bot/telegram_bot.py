@@ -22,6 +22,7 @@ import os
 import re
 import time
 import urllib.request
+from datetime import datetime
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("protocol-bot")
@@ -59,6 +60,7 @@ if not TELEGRAM_BOT_TOKEN:
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, BotCommand
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters,
+    PicklePersistence,
 )
 
 BOT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -222,9 +224,10 @@ BTN_RISK = "📈 پایش خطر"
 BTN_TIP = "🎓 نکته امروز"
 BTN_SECTIONS = "📖 بخش‌های پروتکل"
 BTN_HELP = "❓ راهنما"
+BTN_ROLE = "👤 نقش من"
 
 MAIN_KEYBOARD = ReplyKeyboardMarkup(
-    [[BTN_RISK, BTN_TIP], [BTN_SECTIONS, BTN_HELP]],
+    [[BTN_RISK, BTN_TIP], [BTN_SECTIONS, BTN_ROLE], [BTN_HELP]],
     resize_keyboard=True,
     input_field_placeholder="سؤال خود را فارسی بنویسید…",
 )
@@ -235,6 +238,8 @@ WELCOME = (
     "(سایکوز / اسکیزوفرنی + اختلال مصرف مواد + BPD ± ADHD).\n\n"
     "🏛 *بخش اصلی:* پروتکل کامل درمان، پایش خطر و آموزش — در همین ربات\n"
     "🧠 *بخش هوش مصنوعی:* پاسخ‌های مقاله‌محور از دستیار کلودفلر\n\n"
+    "👤 با دکمه‌ی «نقش من» مشخص کنید *بیمار* هستید، *همراه خانواده* یا *متخصص* "
+    "تا پاسخ‌ها متناسب شود.\n\n"
     "سؤال‌تان را بنویسید یا از دکمه‌های پایین صفحه استفاده کنید 👇\n\n"
     "⚠️ _من جایگزین پزشک نیستم؛ در وضعیت اورژانسی فوراً با خدمات درمانی تماس بگیرید._"
 )
@@ -245,9 +250,12 @@ HELP_TEXT = (
     f"• {BTN_RISK} / /risk → ارزیابی خطر ۷ شاخصه (۰ تا ۴)\n"
     f"• {BTN_TIP} / /tip → نکته‌ی آموزشی امروز\n"
     f"• {BTN_SECTIONS} → مرور بخش‌های پروتکل درمان\n"
+    f"• {BTN_ROLE} / /role → انتخاب نقش (بیمار / همراه / متخصص)\n"
+    "• /history → روند امتیازهای پایش خطر شما\n"
     "• /about → درباره‌ی معماری ربات و منابع\n"
     "• /cancel → لغو ارزیابی در جریان\n\n"
-    "🔒 حریم خصوصی: متن پیام‌های شما ذخیره نمی‌شود؛ ارزیابی خطر بدون نام بیمار است."
+    "🔒 حریم خصوصی: متن پیام‌های شما ذخیره نمی‌شود؛ از ارزیابی خطر فقط امتیاز و تاریخ "
+    "(بدون نام و بدون متن) برای نمایش روند نگه داشته می‌شود."
 )
 
 ABOUT_TEXT = (
@@ -429,7 +437,7 @@ async def answer_question(update: Update, context: ContextTypes.DEFAULT_TYPE, qu
         return
     typing = asyncio.create_task(_keep_typing(update.effective_chat.id, context))
     try:
-        data = await asyncio.to_thread(ask_ai, question)          # بخش هوش مصنوعی
+        data = await asyncio.to_thread(ask_ai, question, get_role(context))  # بخش هوش مصنوعی
         if data:
             lines = [data["answer"].rstrip(), ""]
             src = data.get("source") or ""
@@ -467,9 +475,49 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await cmd_tip(update, context)
     if text == BTN_SECTIONS:
         return await cmd_sections(update, context)
+    if text == BTN_ROLE:
+        return await cmd_role(update, context)
     if text == BTN_HELP:
         return await cmd_help(update, context)
     await answer_question(update, context, text)
+
+
+# ---------- نقش کاربر (بیمار / همراه / متخصص) ----------
+ROLE_OPTIONS = {
+    "patient": ("🧍 بیمار", "پاسخ‌ها ساده، امیدبخش و بدون جزئیات دوز دارو"),
+    "family": ("👨‍👩‍👦 همراه / خانواده", "پاسخ‌ها روی حمایت عملی، علائم هشدار و زمان تماس با پزشک"),
+    "doctor": ("🩺 متخصص / درمانگر", "پاسخ‌ها فنی، با محدودیت شواهد و ارجاع به مقالات"),
+}
+
+
+def get_role(context: ContextTypes.DEFAULT_TYPE) -> str:
+    return context.user_data.get("role", "patient")
+
+
+async def cmd_role(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    current = get_role(context)
+    rows = [[InlineKeyboardButton(label, callback_data=f"role:{key}")]
+            for key, (label, _) in ROLE_OPTIONS.items()]
+    await update.effective_message.reply_text(
+        "👤 *نقش شما*\n\n"
+        f"انتخاب فعلی: {ROLE_OPTIONS[current][0]}\n\n"
+        "پاسخ‌های دستیار هوشمند بر اساس نقش شما تنظیم می‌شود:",
+        reply_markup=InlineKeyboardMarkup(rows), parse_mode="Markdown")
+
+
+async def on_role_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    key = (q.data or "").split(":", 1)[-1]
+    if key not in ROLE_OPTIONS:
+        await q.answer("گزینه نامعتبر است.")
+        return
+    context.user_data["role"] = key
+    label, desc = ROLE_OPTIONS[key]
+    await q.answer("ثبت شد ✅")
+    if q.message is not None:
+        await q.message.reply_text(
+            f"✅ نقش شما: *{label}*\n{desc}\n\nاز این پس پاسخ‌ها برای همین نقش تنظیم می‌شود.",
+            parse_mode="Markdown")
 
 
 # ---------- پایش خطر ----------
@@ -525,15 +573,100 @@ async def _finish_risk(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if state is None:
         return
     result = assess_risk(state["answers"])
+    # ثبت در سابقه (فقط امتیاز و تاریخ — بدون نام و بدون متن)
+    hist = context.user_data.setdefault("risk_history", [])
+    prev = hist[-1]["score"] if hist else None
+    hist.append({"date": datetime.now().isoformat(timespec="minutes"),
+                 "score": result["score"], "level": result["level"]})
+    del hist[:-20]  # فقط ۲۰ ارزیابی آخر نگه داشته می‌شود
+    delta = ""
+    if prev is not None:
+        d = result["score"] - prev
+        arrow = "⬆️" if d > 0 else ("⬇️" if d < 0 else "➡️")
+        delta = f"\n📊 تغییر نسبت به دفعه‌ی قبل: {arrow} {'+' if d > 0 else ''}{d} نقطه\n"
     vals = " | ".join(f"{label}: {result['inputs'].get(key, 0)}" for key, label in RISK_FIELDS)
     await send_long(update, (
         f"🩺 *گزارش پایش خطر*\n\n"
         f"امتیاز: *{result['score']} از ۷۶*\n"
-        f"سطح: *{result['level']}*\n\n"
+        f"سطح: *{result['level']}*\n{delta}\n"
         f"📌 اقدام پیشنهادی:\n{result['action']}\n\n"
         f"ثبت‌شده‌ها: {vals}\n\n"
+        f"📈 روند کامل ارزیابی‌ها: /history\n\n"
         f"⚠️ این خروجی جایگزین ارزیابی پزشک نیست و نباید خودکار دارو را تغییر دهد."
     ), parse_mode="Markdown")
+
+
+# ---------- سابقه و روند پایش ----------
+_PERSIAN_DIGITS = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+
+
+def fa_digits(value) -> str:
+    """تبدیل ارقام لاتین به فارسی."""
+    return str(value).translate(_PERSIAN_DIGITS)
+
+
+def _gregorian_to_jalali(gy: int, gm: int, gd: int) -> tuple[int, int, int]:
+    """تبدیل تاریخ میلادی به شمسی (الگوریتم استاندارد جلالی)."""
+    g_d_m = (0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334)
+    gy2, gm2, gd2 = gy - 1600, gm - 1, gd - 1
+    day_no = 365 * gy2 + (gy2 + 3) // 4 - (gy2 + 99) // 100 + (gy2 + 399) // 400
+    day_no += g_d_m[gm2]
+    if gm2 > 1 and ((gy % 4 == 0 and gy % 100 != 0) or (gy % 400 == 0)):
+        day_no += 1
+    day_no += gd2
+    j_day_no = day_no - 79
+    j_np = j_day_no // 12053
+    j_day_no %= 12053
+    jy = 979 + 33 * j_np + 4 * (j_day_no // 1461)
+    j_day_no %= 1461
+    if j_day_no >= 366:
+        jy += (j_day_no - 1) // 365
+        j_day_no = (j_day_no - 1) % 365
+    if j_day_no < 186:
+        jm, jd = 1 + j_day_no // 31, 1 + j_day_no % 31
+    else:
+        jm, jd = 7 + (j_day_no - 186) // 30, 1 + (j_day_no - 186) % 30
+    return jy, jm, jd
+
+
+def jalali_date(iso: str) -> str:
+    """تاریخ میلادی ISO را به شمسی «۱۴۰۵/۰۶/۰۷» تبدیل می‌کند."""
+    dt = datetime.fromisoformat(iso)
+    jy, jm, jd = _gregorian_to_jalali(dt.year, dt.month, dt.day)
+    return f"{fa_digits(f'{jy:04d}/{jm:02d}/{jd:02d}')}"
+
+
+def history_report(hist: list) -> str:
+    """گزارش متنی روند پایش خطر (تست‌پذیر آفلاین)."""
+    if not hist:
+        return ("📈 هنوز ارزیابی ثبت‌شده‌ای ندارید.\n\n"
+                "برای اولین ثبت، /risk را بزنید — بعد از هر ارزیابی، امتیاز شما اینجا نگه داشته می‌شود.")
+    lines = ["📈 *روند پایش خطر شما*", ""]
+    prev = None
+    for h in hist:
+        s = h["score"]
+        arrow = ""
+        if prev is not None:
+            d = s - prev
+            arrow = " ⬆️" if d > 0 else (" ⬇️" if d < 0 else " ➡️")
+        lines.append(f"• {jalali_date(h['date'])} — {fa_digits(s)} ({h['level']}){arrow}")
+        prev = s
+    if len(hist) > 1:
+        total = hist[-1]["score"] - hist[0]["score"]
+        if total < 0:
+            lines.append(f"\n✅ روند کلی: کاهش {fa_digits(-total)} نقطه از اولین ارزیابی.")
+        elif total > 0:
+            lines.append("\n⚠️ امتیازها بالاتر رفته — وضعیت را با پزشک یا تیم درمان در میان بگذارید.")
+        else:
+            lines.append("\n➡️ روند کلی بدون تغییر.")
+    lines.append("\n🔒 فقط امتیاز و تاریخ ذخیره می‌شود (بدون نام و بدون متن پیام‌ها).")
+    lines.append("⚠️ این گزارش آموزشی است و جایگزین ارزیابی پزشک نیست.")
+    return "\n".join(lines)
+
+
+async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await send_long(update, history_report(context.user_data.get("risk_history") or []),
+                    parse_mode="Markdown")
 
 
 # ---------- راه‌اندازی ----------
@@ -544,6 +677,8 @@ async def _post_init(app: Application) -> None:
         BotCommand("risk", "پایش خطر ۷ شاخصه"),
         BotCommand("tip", "نکته‌ی آموزشی امروز"),
         BotCommand("sections", "بخش‌های پروتکل درمان"),
+        BotCommand("role", "نقش شما: بیمار / همراه / متخصص"),
+        BotCommand("history", "روند پایش‌های قبلی شما"),
         BotCommand("about", "درباره‌ی ربات و منابع"),
         BotCommand("cancel", "لغو ارزیابی در جریان"),
     ]
@@ -555,7 +690,15 @@ async def _post_init(app: Application) -> None:
 
 
 def main():
-    app = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(_post_init).build()
+    # ماندگاری داده‌ها (نقش کاربر و سابقه‌ی پایش) بین اجراها — بدون پایگاه‌داده
+    data_dir = os.path.join(BOT_DIR, "..", "data")
+    os.makedirs(data_dir, exist_ok=True)
+    persistence = PicklePersistence(filepath=os.path.join(data_dir, "bot_data.pkl"))
+    app = (Application.builder()
+           .token(TELEGRAM_BOT_TOKEN)
+           .persistence(persistence)
+           .post_init(_post_init)
+           .build())
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("about", cmd_about))
@@ -563,10 +706,13 @@ def main():
     app.add_handler(CommandHandler("sections", cmd_sections))
     app.add_handler(CommandHandler("risk", cmd_risk))
     app.add_handler(CommandHandler("cancel", cmd_cancel))
+    app.add_handler(CommandHandler("role", cmd_role))
+    app.add_handler(CommandHandler("history", cmd_history))
     if TELEGRAM_CHANNEL_ID:
         app.add_handler(CommandHandler("post_tip", cmd_post_tip))
         app.add_handler(CommandHandler("channel_status", cmd_channel_status))
     app.add_handler(CallbackQueryHandler(on_risk_button, pattern=r"^risk:\d$"))
+    app.add_handler(CallbackQueryHandler(on_role_button, pattern=r"^role:(patient|family|doctor)$"))
     app.add_handler(CallbackQueryHandler(on_section_button, pattern=r"^sec:\d+$"))
     app.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND, on_message))
     if TELEGRAM_CHANNEL_ID:
