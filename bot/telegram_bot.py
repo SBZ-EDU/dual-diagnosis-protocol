@@ -318,6 +318,7 @@ HELP_TEXT = (
     f"• {BTN_COST} / /cost → ارزشیابی هزینه‌ی مراقبت\n"
     f"• {BTN_REPORT} / /report → گزارش ارزشیابی کلی همراه\n"
     f"• {BTN_CRITICAL} / /critical → آموزش ویژه‌ی بخش‌های حیاتی (۵ پرسش)\n"
+    f"• /archive → آرشیو پاسخ‌ها و تحلیل AI + سطح همراهی\n"
     "• /history → روند امتیازهای پایش خطر شما\n"
     "• /about → درباره‌ی معماری ربات و منابع\n"
     "• /cancel → لغو ارزیابی در جریان\n\n"
@@ -844,19 +845,28 @@ async def _present_scenario(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lab["asked"].append(sc["id"])
     lab["current"] = sc["id"]
     n = len(lab["asked"])
-    await update.effective_message.reply_text(
-        f"🎬 سناریوی {n} از {len(pool_all)}: «{sc['title']}»\n\n{sc['text']}\n\n"
-        "✍️ در این موقعیت واقعاً چه می‌کردید؟ واکنش‌تان را بنویسید…\n"
-        "(_برای پایان آزمون: /cancel_)", parse_mode="Markdown")
+    rows = [[InlineKeyboardButton(opt[:60], callback_data=f"sca:{oi}")]
+            for oi, opt in enumerate(sc.get("options") or [])]
+    if rows:
+        rows.append([InlineKeyboardButton("✍️ پاسخ آزاد می‌نویسم", callback_data="scfree")])
+        msg = await update.effective_message.reply_text(
+            f"🎬 سناریوی {n} از {len(pool_all)}: «{sc['title']}»\n\n{sc['text']}\n\n"
+            "کدام واکنش، به‌واقع‌ترینِ شماست؟ — یا دکمه‌ی آخر را بزنید و خودتان بنویسید.",
+            reply_markup=InlineKeyboardMarkup(rows))
+    else:
+        msg = await update.effective_message.reply_text(
+            f"🎬 سناریوی {n} از {len(pool_all)}: «{sc['title']}»\n\n{sc['text']}\n\n"
+            "✍️ در این موقعیت واقعاً چه می‌کردید؟ واکنش‌تان را بنویسید…\n"
+            "(_برای پایان آزمون: /cancel_)", parse_mode="Markdown")
+    lab["qmsg"] = msg.message_id
 
 
-async def _answer_scenario(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
+async def _evaluate_scenario(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                             sc: dict, text: str):
+    """ارزیابی فوری پاسخ همراه (دکمه‌ای یا نوشتاری) با هوش مصنوعی + آرشیو + پیشنهاد آموزش."""
     lab = context.user_data.get("scenario_lab") or {}
-    sc = next((s for s in SCENARIOS if s["id"] == lab.get("current")), None)
-    if not sc:
-        return
     if throttled(update.effective_user.id, context):
-        await update.effective_message.reply_text("⏳ چند لحظه صبر کنید و دوباره بنویسید.")
+        await update.effective_message.reply_text("⏳ چند لحظه صبر کنید و دوباره تلاش کنید.")
         return
     typing = asyncio.create_task(_keep_typing(update.effective_chat.id, context))
     data = None
@@ -880,10 +890,62 @@ async def _answer_scenario(update: Update, context: ContextTypes.DEFAULT_TYPE, t
     if not feedback:
         feedback = ("⚠️ ارزیاب هوش مصنوعی موقتاً در دسترس نیست؛ "
                     "نکته‌ی آموزشی این سناریو:\n\n" + sc["teach"])
+    # آرشیو پاسخ کاربر + تحلیل هوش مصنوعی
+    arch = context.user_data.setdefault("scenario_archive", [])
+    arch.append({"date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                 "sid": sc["id"], "title": sc["title"],
+                 "answer": text[:200], "analysis": feedback[:400], "score": score})
+    del arch[:-50]
+    _record_level(context)
     await send_long(update, f"📋 ارزیابی واکنش شما به «{sc['title']}»:\n\n" + feedback)
+    # پیشنهاد آموزشِ همین موقعیت (فقط ماژول‌های نگذرانده)
+    prog = context.user_data.get("academy") or {}
+    mod_rows = []
+    for mid in sc.get("modules") or []:
+        m = next((x for x in CAREGIVER_MODULES if x["id"] == mid), None)
+        if m and m["id"] not in prog:
+            mod_rows.append([InlineKeyboardButton("📚 " + m["title"][:40],
+                                                  callback_data=f"train:{m['id']}")])
+    if mod_rows:
+        await update.effective_message.reply_text(
+            "📚 برای این موقعیت، این آموزش(ها) را پیشنهاد می‌کنم:",
+            reply_markup=InlineKeyboardMarkup(mod_rows))
     rows = [[InlineKeyboardButton("▶️ سناریوی بعدی", callback_data="scnext")],
             [InlineKeyboardButton("📊 پایان و گزارش ارزشیابی", callback_data="scend")]]
     await update.effective_message.reply_text("ادامه می‌دهید؟", reply_markup=InlineKeyboardMarkup(rows))
+
+
+async def _answer_scenario(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
+    """پاسخ آزادِ نوشتاری کاربر به سناریوی جاری."""
+    lab = context.user_data.get("scenario_lab") or {}
+    sc = next((s for s in SCENARIOS if s["id"] == lab.get("current")), None)
+    if not sc:
+        return
+    await _evaluate_scenario(update, context, sc, text)
+
+
+async def on_sca_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """پاسخ سریع با دکمه → همان ارزیابی فوری هوش مصنوعی."""
+    q = update.callback_query
+    lab = context.user_data.get("scenario_lab") or {}
+    sc = next((s for s in SCENARIOS if s["id"] == lab.get("current")), None)
+    if not sc or not q.message or lab.get("qmsg") != q.message.message_id:
+        await q.answer("این پرسش قدیمی است.")
+        return
+    try:
+        oi = int((q.data or "").split(":", 1)[1])
+        answer = (sc.get("options") or [])[oi]
+    except (ValueError, IndexError):
+        await q.answer()
+        return
+    await q.answer()
+    await _evaluate_scenario(update, context, sc, answer)
+
+
+async def on_scfree(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    await update.effective_message.reply_text(
+        "✍️ واکنش‌تان را همین‌جا بنویسید — منتظرم.")
 
 
 async def on_scnext(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -917,6 +979,11 @@ async def _scenario_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines.append(f"سناریوهای پاسخ‌داده: {len(asked)}")
     if avg is not None:
         lines.append(f"میانگین نمره: {avg} از ۱۰")
+    pts = _record_level(context)
+    lines.append(f"🏆 سطح همراهی: {_level_of(pts)} ({pts} نمره)")
+    arch = context.user_data.get("scenario_archive") or []
+    if arch:
+        lines.append(f"🗂 آرشیو پاسخ‌ها: {len(arch)} ردیف — /archive")
     if weak:
         lines += ["", "🧩 *سناریوهای نیازمند مرور:*"]
         for s in weak[:3]:
@@ -1005,6 +1072,14 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines.append(f"📈 پایش خطر: {len(hist)} ثبت | آخرین: {hist[-1]['score']} از ۷۶ ({hist[-1].get('level', '')})")
     if cost:
         lines.append(f"💰 هزینه‌ی مراقبت: {cost.get('tier', '—')} (امتیاز {cost.get('score', '—')} از ۱۲)")
+    pts = _record_level(context)
+    hist_lv = context.user_data.get("level_history") or []
+    first = hist_lv[0]["pts"] if hist_lv else pts
+    growth = pts - first
+    lines.append(f"🏆 سطح همراهی: {_level_of(pts)} — {pts} نمره"
+                 + (f" (رشد از ابتدای مسیر: ''{' + ' if growth > 0 else ' '}{growth})" if growth else ""))
+    if context.user_data.get("scenario_archive"):
+        lines.append(f"🗂 آرشیو سناریوها: {len(context.user_data['scenario_archive'])} پاسخ ثبت‌شده (/archive)")
     recs = []
     if path == "alone":
         recs.append("🔹 وصل‌کردن متخصص/کلینیک — اولویت اول برای مسیرِ تنها")
@@ -1022,6 +1097,70 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if TELEGRAM_CHANNEL_ID:
         lines += ["", "📢 کانال آموزش روزانه: " + channel_link()]
     lines += ["", "_این گزارش ابزار آموزشی است و جایگزین ارزیابی بالینی نیست._"]
+    await send_long(update, "\n".join(lines), reply_markup=MAIN_KEYBOARD, parse_mode="Markdown")
+
+
+# ---------- سطح همراهی و آرشیو ----------
+def _companion_points(context: ContextTypes.DEFAULT_TYPE) -> int:
+    """نمره‌ی ترکیبی: ماژول‌ها + میانگین سناریوها + تعداد پاسخ‌ها (حداکثر ~۱۰۰)."""
+    prog = context.user_data.get("academy") or {}
+    mods = sum(1 for m in CAREGIVER_MODULES if m["id"] in prog)
+    lab = context.user_data.get("scenario_lab") or {}
+    results = [v for v in (lab.get("results") or {}).values() if v is not None]
+    avg = sum(results) / len(results) if results else 0.0
+    arch = context.user_data.get("scenario_archive") or []
+    return round(mods * 9 + avg * 3.5 + min(len(arch), 8) * 1.5)
+
+
+def _level_of(pts: int) -> str:
+    if pts >= 90:
+        return "⭐ همراه خبره"
+    if pts >= 70:
+        return "🎓 همراه آموزش‌دیده"
+    if pts >= 40:
+        return "📘 در حال یادگیری"
+    return "🌱 مبتدی"
+
+
+def _record_level(context: ContextTypes.DEFAULT_TYPE) -> int:
+    """نمره‌ی فعلی را در تاریخچه‌ی سطح ثبت می‌کند (برای نمایش رشد)."""
+    pts = _companion_points(context)
+    hist = context.user_data.setdefault("level_history", [])
+    hist.append({"date": datetime.now().strftime("%Y-%m-%d"), "pts": pts})
+    del hist[:-30]
+    return pts
+
+
+async def cmd_archive(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """آرشیو پاسخ‌های کاربر و تحلیل هوش مصنوعی + روند رشد."""
+    arch = context.user_data.get("scenario_archive") or []
+    if not arch:
+        await update.effective_message.reply_text(
+            "🗂 هنوز پاسخی آرشیو نشده است. با /scenario شروع کنید — هر پاسخ و تحلیلش "
+            "به‌صورت خودکار اینجا نگه داشته می‌شود.", reply_markup=MAIN_KEYBOARD)
+        return
+    pts = _record_level(context)
+    hist = context.user_data.get("level_history") or []
+    first = hist[0]["pts"] if hist else pts
+    delta = pts - first
+    scores = [e["score"] for e in arch if e.get("score") is not None]
+    lines = ["🗂 *آرشیو آزمون سناریو*", ""]
+    lines.append(f"پاسخ‌های ثبت‌شده: {len(arch)}")
+    if scores:
+        lines.append(f"میانگین نمره‌ی همه‌ی پاسخ‌ها: {round(sum(scores) / len(scores), 1)} از ۱۰")
+    lines.append(f"🏆 سطح همراهی: {_level_of(pts)} ({pts} نمره)")
+    if delta:
+        lines.append(f"📈 رشد از شروع مسیر: {'+' if delta > 0 else ''}{delta} نمره")
+    lines += ["", "*۵ پاسخ آخر:*"]
+    for e in arch[-5:]:
+        sc = e.get("score")
+        mark = "⭐" if (sc or 0) >= 8 else ("✅" if (sc or 0) >= 6 else "⚠️")
+        lines.append(f"{mark} {e['date']} — «{e['title']}» "
+                     f"(نمره: {sc if sc is not None else '—'})")
+        lines.append(f"   پاسخ شما: {e['answer'][:120]}")
+        lines.append(f"   تحلیل AI: {e['analysis'][:160]}")
+        lines.append("")
+    lines.append("_آرشیو فقط برای خود شما نگه داشته می‌شود._")
     await send_long(update, "\n".join(lines), reply_markup=MAIN_KEYBOARD, parse_mode="Markdown")
 
 
@@ -1209,6 +1348,7 @@ async def _post_init(app: Application) -> None:
         BotCommand("cost", "ارزشیابی هزینه‌ی مراقبت"),
         BotCommand("report", "گزارش ارزشیابی همراه"),
         BotCommand("critical", "آموزش ویژه‌ی بخش‌های حیاتی"),
+        BotCommand("archive", "آرشیو پاسخ‌ها و تحلیل AI"),
         BotCommand("history", "روند پایش‌های قبلی شما"),
         BotCommand("about", "درباره‌ی ربات و منابع"),
         BotCommand("cancel", "لغو ارزیابی در جریان"),
@@ -1255,6 +1395,9 @@ def main():
     app.add_handler(CallbackQueryHandler(on_scnext, pattern=r"^scnext$"))
     app.add_handler(CallbackQueryHandler(on_scend, pattern=r"^scend$"))
     app.add_handler(CallbackQueryHandler(on_cost_button, pattern=r"^cost:\d+:\d+$"))
+    app.add_handler(CommandHandler("archive", cmd_archive))
+    app.add_handler(CallbackQueryHandler(on_sca_button, pattern=r"^sca:\d+$"))
+    app.add_handler(CallbackQueryHandler(on_scfree, pattern=r"^scfree$"))
     app.add_handler(CallbackQueryHandler(on_train_module, pattern=r"^train:[a-z-]+$"))
     app.add_handler(CallbackQueryHandler(on_train_answer, pattern=r"^tq:[a-z-]+:\d+:\d+$"))
     app.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND, on_message))
