@@ -586,9 +586,22 @@
   panel.innerHTML = '<div id="ddx-chat-head"><b>دستیار تشخیص دوگانه</b>' +
     '<button id="ddx-chat-close" type="button" aria-label="بستن">×</button></div>' +
     '<div id="ddx-chat-msgs"></div>' +
+    '<div id="ddx-chat-chips"></div>' +
     '<form id="ddx-chat-form"><input id="ddx-chat-in" placeholder="سؤال خود را فارسی بنویسید…" ' +
     'autocomplete="off" maxlength="500"><button id="ddx-chat-send" type="submit">ارسال</button></form>';
   document.body.appendChild(btn); document.body.appendChild(panel);
+  var CHIPS = ["درمان یکپارچه چیست؟", "علائم هشدار عود", "کلوزاپین چه زمانی؟", "چطور از همراه حمایت کنم؟"];
+  var chipsBox = panel.querySelector("#ddx-chat-chips");
+  CHIPS.forEach(function (c) {
+    var el = document.createElement("button");
+    el.type = "button"; el.className = "ddx-chip"; el.textContent = c;
+    el.onclick = function () {
+      var inp = panel.querySelector("#ddx-chat-in");
+      inp.value = c;
+      panel.querySelector("#ddx-chat-form").dispatchEvent(new Event("submit", {cancelable: true}));
+    };
+    chipsBox.appendChild(el);
+  });
   var msgs = panel.querySelector("#ddx-chat-msgs");
   function add(text, who) {
     var d = document.createElement("div"); d.className = "ddx-msg " + who;

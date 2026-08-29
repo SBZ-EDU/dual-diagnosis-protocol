@@ -325,3 +325,10 @@ white-space:pre-wrap;word-break:break-word}
 #ddx-chat-send{border:none;background:#0e7c7c;color:#fff;padding:0 18px;font:inherit;cursor:pointer}
 #ddx-chat-send:disabled{background:#9cc4c4}
 @media print{#ddx-chat-btn,#ddx-chat-panel{display:none !important}}
+
+/* --- چیپ‌های پرسش سریع (هماهنگ با دکمه‌های ربات تلگرام) --- */
+#ddx-chat-chips{display:flex;flex-wrap:wrap;gap:6px;padding:8px 10px;background:#fff;
+border-bottom:1px solid #e3efef}
+.ddx-chip{background:#ecf6f6;color:#0e7c7c;border:1px solid #cfe4e4;border-radius:14px;
+padding:5px 11px;font:inherit;font-size:12.5px;cursor:pointer;transition:background .15s}
+.ddx-chip:hover{background:#dceeee}
