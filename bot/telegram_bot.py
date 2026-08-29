@@ -46,6 +46,8 @@ _load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 AI_API_URL = os.getenv("AI_API_URL", "https://dual-diagnosis-clinical-hub.elasa2next.workers.dev/api/chat")
+TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID", "").strip()
+CHANNEL_POST_COOLDOWN_S = float(os.getenv("CHANNEL_POST_COOLDOWN_S", "600"))
 COOLDOWN_S = float(os.getenv("TELEGRAM_COOLDOWN_S", "4"))
 
 if not TELEGRAM_BOT_TOKEN:
@@ -293,9 +295,81 @@ def throttled(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
     return False
 
 
+# ---------- انتشار در کانال ----------
+_channel_last_post = 0.0
+
+
+def channel_link() -> str:
+    """لینک عمومی کانال پیکربندی‌شده (اگر نبود، رشته‌ی خالی)."""
+    if not TELEGRAM_CHANNEL_ID:
+        return ""
+    if TELEGRAM_CHANNEL_ID.startswith("@"):
+        return f"https://t.me/{TELEGRAM_CHANNEL_ID[1:]}"
+    return f"https://t.me/c/{str(TELEGRAM_CHANNEL_ID).lstrip('-').replace('-100', '', 1)}"
+
+
+async def post_to_channel(bot, text: str) -> None:
+    """متن را به کانال پیکربندی‌شده می‌فرستد (با احترام به سقف طول پیام)."""
+    if not TELEGRAM_CHANNEL_ID:
+        raise RuntimeError("TELEGRAM_CHANNEL_ID تنظیم نشده است.")
+    for part in split_message(text):
+        try:
+            await bot.send_message(chat_id=TELEGRAM_CHANNEL_ID, text=part, parse_mode="Markdown")
+        except Exception:
+            await bot.send_message(chat_id=TELEGRAM_CHANNEL_ID, text=part)
+
+
+async def job_daily_tip(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """پست آموزشی روزانه به کانال (هر روز ساعت ۹ صبح به وقت تهران)."""
+    try:
+        await post_to_channel(context.bot, tip_of_day())
+        log.info("پست آموزشی روزانه به کانال ارسال شد.")
+    except Exception as e:
+        log.warning("ارسال پست آموزشی به کانال ناموفق: %s", e)
+
+
+async def cmd_post_tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ارسال فوری نکته‌ی امروز به کانال (با خنک‌سازی ضد اسپم)."""
+    global _channel_last_post
+    if not TELEGRAM_CHANNEL_ID:
+        await send_long(update, "کانالی پیکربندی نشده است (TELEGRAM_CHANNEL_ID در .env).")
+        return
+    now = time.monotonic()
+    if now - _channel_last_post < CHANNEL_POST_COOLDOWN_S:
+        await send_long(update, "⏳ همین حالا پستی ارسال شده است؛ کمی بعد دوباره تلاش کنید.")
+        return
+    try:
+        await post_to_channel(context.bot, tip_of_day())
+        _channel_last_post = now
+        await send_long(update, "✅ نکته‌ی امروز به کانال ارسال شد.")
+    except Exception as e:
+        await send_long(update, f"❌ ارسال به کانال ناموفق بود: {e}")
+
+
+async def cmd_channel_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """بررسی اتصال و وضعیت کانال."""
+    if not TELEGRAM_CHANNEL_ID:
+        await send_long(update, "کانالی پیکربندی نشده است. TELEGRAM_CHANNEL_ID را در .env بگذارید.")
+        return
+    try:
+        chat = await context.bot.get_chat(TELEGRAM_CHANNEL_ID)
+        link = f"https://t.me/{chat.username}" if getattr(chat, "username", None) else (
+            chat.invite_link or "-")
+        await send_long(
+            update,
+            f"📢 کانال: {chat.title}\n"
+            f"🔗 لینک: {link}\n"
+            f"✅ ربات به کانال متصل است و هر روز ساعت ۹ (به وقت تهران) نکته‌ی آموزشی منتشر می‌کند.\n"
+            f"برای ارسال فوری: /post_tip",
+        )
+    except Exception as e:
+        await send_long(update, f"❌ دسترسی به کانال ناموفق: {e}")
+
+
 # ---------- دستورها ----------
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.effective_message.reply_text(WELCOME, parse_mode="Markdown",
+    text = WELCOME + (f"\n\n📢 کانال اخبار و آموزش روزانه: {channel_link()}" if TELEGRAM_CHANNEL_ID else "")
+    await update.effective_message.reply_text(text, parse_mode="Markdown",
                                               reply_markup=MAIN_KEYBOARD)
 
 
@@ -305,7 +379,8 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_about(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.effective_message.reply_text(ABOUT_TEXT, parse_mode="Markdown")
+    text = ABOUT_TEXT + (f"\n\n📢 کانال اخبار: {channel_link()}" if TELEGRAM_CHANNEL_ID else "")
+    await update.effective_message.reply_text(text, parse_mode="Markdown")
 
 
 async def cmd_tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -488,9 +563,24 @@ def main():
     app.add_handler(CommandHandler("sections", cmd_sections))
     app.add_handler(CommandHandler("risk", cmd_risk))
     app.add_handler(CommandHandler("cancel", cmd_cancel))
+    if TELEGRAM_CHANNEL_ID:
+        app.add_handler(CommandHandler("post_tip", cmd_post_tip))
+        app.add_handler(CommandHandler("channel_status", cmd_channel_status))
     app.add_handler(CallbackQueryHandler(on_risk_button, pattern=r"^risk:\d$"))
     app.add_handler(CallbackQueryHandler(on_section_button, pattern=r"^sec:\d+$"))
     app.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND, on_message))
+    if TELEGRAM_CHANNEL_ID:
+        if app.job_queue is not None:
+            from datetime import time as dtime
+            import zoneinfo
+            app.job_queue.run_daily(
+                job_daily_tip,
+                time=dtime(9, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tehran")),
+                name="daily_tip",
+            )
+            log.info("پست روزانه‌ی کانال (%s) هر روز ساعت ۹ (تهران) زمان‌بندی شد.", TELEGRAM_CHANNEL_ID)
+        else:
+            log.warning("job_queue در دسترس نیست (python-telegram-bot[job-queue])؛ پست روزانه فعال نشد.")
     log.info("ربات پروتکل (بخش اصلی) + دستیار هوش مصنوعی (%s) راه‌اندازی می‌شود...", AI_API_URL)
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
