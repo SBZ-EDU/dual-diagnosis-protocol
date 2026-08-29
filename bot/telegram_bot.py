@@ -58,6 +58,11 @@ if not TELEGRAM_BOT_TOKEN:
     )
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, BotCommand
+
+try:
+    from caregiver_quiz import CAREGIVER_MODULES, SITE_ACADEMY_URL
+except ImportError:  # اجرا/ایمپورت از ریشه‌ی مخزن
+    from bot.caregiver_quiz import CAREGIVER_MODULES, SITE_ACADEMY_URL
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters,
     PicklePersistence,
@@ -224,10 +229,11 @@ BTN_RISK = "📈 پایش خطر"
 BTN_TIP = "🎓 نکته امروز"
 BTN_SECTIONS = "📖 بخش‌های پروتکل"
 BTN_HELP = "❓ راهنما"
+BTN_TRAINING = "🎓 آموزش همراه"
 BTN_ROLE = "👤 نقش من"
 
 MAIN_KEYBOARD = ReplyKeyboardMarkup(
-    [[BTN_RISK, BTN_TIP], [BTN_SECTIONS, BTN_ROLE], [BTN_HELP]],
+    [[BTN_RISK, BTN_TIP], [BTN_SECTIONS, BTN_ROLE], [BTN_TRAINING, BTN_HELP]],
     resize_keyboard=True,
     input_field_placeholder="سؤال خود را فارسی بنویسید…",
 )
@@ -251,6 +257,7 @@ HELP_TEXT = (
     f"• {BTN_TIP} / /tip → نکته‌ی آموزشی امروز\n"
     f"• {BTN_SECTIONS} → مرور بخش‌های پروتکل درمان\n"
     f"• {BTN_ROLE} / /role → انتخاب نقش (بیمار / همراه / متخصص)\n"
+    f"• {BTN_TRAINING} / /training → دوره‌ی آموزش همراه با آزمون\n"
     "• /history → روند امتیازهای پایش خطر شما\n"
     "• /about → درباره‌ی معماری ربات و منابع\n"
     "• /cancel → لغو ارزیابی در جریان\n\n"
@@ -477,9 +484,119 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await cmd_sections(update, context)
     if text == BTN_ROLE:
         return await cmd_role(update, context)
+    if text == BTN_TRAINING:
+        return await cmd_training(update, context)
     if text == BTN_HELP:
         return await cmd_help(update, context)
     await answer_question(update, context, text)
+
+
+# ---------- آموزش همراه (دوره + آزمون) ----------
+def _academy_progress(context: ContextTypes.DEFAULT_TYPE) -> dict:
+    return context.user_data.setdefault("academy", {})
+
+
+async def cmd_training(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    prog = _academy_progress(context)
+    done = sum(1 for m in CAREGIVER_MODULES if m["id"] in prog)
+    rows = [[InlineKeyboardButton(("✅ " if m["id"] in prog else "▫️ ") + m["title"][:38],
+                                  callback_data=f"train:{m['id']}")]
+            for m in CAREGIVER_MODULES]
+    await update.effective_message.reply_text(
+        "🎓 *دوره‌ی آموزش همراه*\n\n"
+        f"پیشرفت شما: {done} از {len(CAREGIVER_MODULES)} ماژول\n\n"
+        "هر ماژول یک منبع آموزشی (ویدئو یا متن علمی) و یک آزمون ۳ پرسشی دارد؛ "
+        "برای قبولی باید هر ۳ پرسش را درست پاسخ دهید.\n"
+        "پس از تکمیل همه‌ی ماژول‌ها، گواهی آموزش همراه با کد اعتبارسنجی از سایت مرکز صادر می‌شود.",
+        reply_markup=InlineKeyboardMarkup(rows), parse_mode="Markdown")
+
+
+async def _ask_training_question(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                 module: dict, first: bool = False):
+    st = context.user_data.get("training") or {}
+    qi = st.get("qi", 0)
+    quiz = module["quiz"]
+    if qi >= len(quiz):
+        return await _finish_training(update, context, module)
+    question = quiz[qi]
+    head = ""
+    if first:
+        head = (f"🎓 *{module['title']}*\n"
+                f"📚 منبع: {module['source']} ({module['duration']})\n"
+                f"{module['summary']}\n"
+                f"🔗 {module['url']}\n\n")
+    msg = await update.effective_message.reply_text(
+        head + f"❓ *پرسش {qi + 1} از {len(quiz)}*\n\n{question['q']}",
+        reply_markup=InlineKeyboardMarkup(
+            [[InlineKeyboardButton(o[:60], callback_data=f"tq:{module['id']}:{qi}:{i}")]
+             for i, o in enumerate(question["o"])]))
+    st["qmsg"] = msg.message_id
+
+
+async def on_train_module(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    mid = (q.data or "").split(":", 1)[1]
+    module = next((m for m in CAREGIVER_MODULES if m["id"] == mid), None)
+    if module is None:
+        await q.answer("ماژول یافت نشد.")
+        return
+    context.user_data["training"] = {"mid": mid, "qi": 0, "answers": []}
+    await q.answer()
+    await _ask_training_question(update, context, module, first=True)
+
+
+async def on_train_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    st = context.user_data.get("training")
+    if not st:
+        await q.answer("جلسه‌ی آموزشی فعال نیست؛ /training را بزنید.", show_alert=True)
+        return
+    if not q.message or st.get("qmsg") != q.message.message_id:
+        await q.answer("به آخرین پرسش پاسخ دهید.")
+        return
+    try:
+        _, mid, qi, oi = (q.data or "").split(":")
+        qi, oi = int(qi), int(oi)
+    except ValueError:
+        await q.answer()
+        return
+    if qi != st.get("qi") or mid != st.get("mid"):
+        await q.answer("این پرسش قدیمی است.")
+        return
+    module = next((m for m in CAREGIVER_MODULES if m["id"] == mid), None)
+    if module is None:
+        await q.answer("ماژول یافت نشد.")
+        return
+    st["answers"].append(oi)
+    st["qi"] = qi + 1
+    await q.answer()
+    await _ask_training_question(update, context, module)
+
+
+async def _finish_training(update: Update, context: ContextTypes.DEFAULT_TYPE, module: dict):
+    answers = context.user_data.pop("training", {}).get("answers", [])
+    quiz = module["quiz"]
+    ok = sum(1 for i, a in enumerate(answers) if i < len(quiz) and a == quiz[i]["a"])
+    total = len(quiz)
+    score = round(100 * ok / total) if total else 0
+    if score >= 100:
+        prog = _academy_progress(context)
+        prog[module["id"]] = score
+        done = sum(1 for m in CAREGIVER_MODULES if m["id"] in prog)
+        text = (f"✅ *ماژول «{module['title']}» تکمیل شد!*\n\n"
+                f"نمره: {score} از ۱۰۰ ({ok} از {total} درست)\n"
+                f"پیشرفت دوره: {done} از {len(CAREGIVER_MODULES)} ماژول")
+        if done == len(CAREGIVER_MODULES):
+            text += ("\n\n🎉 تبریک! همه‌ی ماژول‌های *دوره‌ی آموزش همراه* را گذراندید.\n"
+                     "برای دریافت گواهی با کد اعتبارسنجی، از بخش آکادمی سایت مرکز اقدام کنید:\n"
+                     + SITE_ACADEMY_URL)
+        await send_long(update, text, reply_markup=MAIN_KEYBOARD, parse_mode="Markdown")
+    else:
+        await update.effective_message.reply_text(
+            f"📚 نمره: {ok} از {total} درست — برای قبولی باید هر ۳ پرسش درست باشد.\n"
+            "منبع را دوباره مرور کنید و ماژول را تکرار کنید:",
+            reply_markup=InlineKeyboardMarkup(
+                [[InlineKeyboardButton("🔄 تلاش دوباره", callback_data=f"train:{module['id']}")]]))
 
 
 # ---------- نقش کاربر (بیمار / همراه / متخصص) ----------
@@ -678,6 +795,7 @@ async def _post_init(app: Application) -> None:
         BotCommand("tip", "نکته‌ی آموزشی امروز"),
         BotCommand("sections", "بخش‌های پروتکل درمان"),
         BotCommand("role", "نقش شما: بیمار / همراه / متخصص"),
+        BotCommand("training", "دوره‌ی آموزش همراه + آزمون"),
         BotCommand("history", "روند پایش‌های قبلی شما"),
         BotCommand("about", "درباره‌ی ربات و منابع"),
         BotCommand("cancel", "لغو ارزیابی در جریان"),
@@ -714,6 +832,9 @@ def main():
     app.add_handler(CallbackQueryHandler(on_risk_button, pattern=r"^risk:\d$"))
     app.add_handler(CallbackQueryHandler(on_role_button, pattern=r"^role:(patient|family|doctor)$"))
     app.add_handler(CallbackQueryHandler(on_section_button, pattern=r"^sec:\d+$"))
+    app.add_handler(CommandHandler("training", cmd_training))
+    app.add_handler(CallbackQueryHandler(on_train_module, pattern=r"^train:[a-z-]+$"))
+    app.add_handler(CallbackQueryHandler(on_train_answer, pattern=r"^tq:[a-z-]+:\d+:\d+$"))
     app.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND, on_message))
     if TELEGRAM_CHANNEL_ID:
         if app.job_queue is not None:
