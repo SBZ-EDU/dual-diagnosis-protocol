@@ -63,6 +63,12 @@ try:
     from caregiver_quiz import CAREGIVER_MODULES, SITE_ACADEMY_URL
 except ImportError:  # اجرا/ایمپورت از ریشه‌ی مخزن
     from bot.caregiver_quiz import CAREGIVER_MODULES, SITE_ACADEMY_URL
+try:
+    from scenarios import (SCENARIOS, SPECIALIST_LABELS, COST_QUESTIONS,
+                           COST_TIERS, build_eval_prompt)
+except ImportError:
+    from bot.scenarios import (SCENARIOS, SPECIALIST_LABELS, COST_QUESTIONS,
+                               COST_TIERS, build_eval_prompt)
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters,
     PicklePersistence,
@@ -231,10 +237,13 @@ BTN_SECTIONS = "📖 بخش‌های پروتکل"
 BTN_HELP = "❓ راهنما"
 BTN_TRAINING = "🎓 آموزش همراه"
 BTN_INVITE = "🔗 دعوت از دیگران"
+BTN_SCENARIO = "🧪 آزمون سناریو"
+BTN_COST = "💰 ارزشیابی هزینه"
+BTN_REPORT = "📊 گزارش ارزشیابی"
 BTN_ROLE = "👤 نقش من"
 
 MAIN_KEYBOARD = ReplyKeyboardMarkup(
-    [[BTN_RISK, BTN_TIP], [BTN_SECTIONS, BTN_ROLE], [BTN_TRAINING, BTN_INVITE], [BTN_HELP]],
+    [[BTN_RISK, BTN_TIP], [BTN_SECTIONS, BTN_ROLE], [BTN_TRAINING, BTN_INVITE], [BTN_SCENARIO, BTN_COST], [BTN_REPORT, BTN_HELP]],
     resize_keyboard=True,
     input_field_placeholder="سؤال خود را فارسی بنویسید…",
 )
@@ -260,6 +269,9 @@ HELP_TEXT = (
     f"• {BTN_ROLE} / /role → انتخاب نقش (بیمار / همراه / متخصص)\n"
     f"• {BTN_TRAINING} / /training → دوره‌ی آموزش همراه با آزمون\n"
     f"• {BTN_INVITE} / /invite → لینک دعوت اختصاصی با نقش شما\n"
+    f"• {BTN_SCENARIO} / /scenario → آزمون سناریو با ارزیابی هوش مصنوعی\n"
+    f"• {BTN_COST} / /cost → ارزشیابی هزینه‌ی مراقبت\n"
+    f"• {BTN_REPORT} / /report → گزارش ارزشیابی کلی همراه\n"
     "• /history → روند امتیازهای پایش خطر شما\n"
     "• /about → درباره‌ی معماری ربات و منابع\n"
     "• /cancel → لغو ارزیابی در جریان\n\n"
@@ -426,8 +438,21 @@ async def cmd_tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    cancelled = []
     if context.user_data.pop("risk", None) is not None:
-        await update.effective_message.reply_text("ارزیابی خطر لغو شد. ✅")
+        cancelled.append("ارزیابی خطر")
+    if context.user_data.pop("training", None) is not None:
+        cancelled.append("آزمون آموزش")
+    lab = context.user_data.get("scenario_lab")
+    if lab and lab.get("active"):
+        lab["active"] = False
+        lab["current"] = None
+        cancelled.append("آزمون سناریو (نتیجه‌های ثبت‌شده حفظ شد)")
+    if context.user_data.pop("cost_flow", None) is not None:
+        cancelled.append("ارزشیابی هزینه")
+    if cancelled:
+        await update.effective_message.reply_text(
+            "لغو شد: " + "، ".join(cancelled) + " ✅", reply_markup=MAIN_KEYBOARD)
     else:
         await update.effective_message.reply_text("ارزیابی در جریانی وجود ندارد.")
 
@@ -498,6 +523,9 @@ async def _keep_typing(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
 
 async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.effective_message.text or "").strip()
+    lab = context.user_data.get("scenario_lab")
+    if lab and lab.get("active") and lab.get("current"):
+        return await _answer_scenario(update, context, text)
     if text == BTN_RISK:
         return await cmd_risk(update, context)
     if text == BTN_TIP:
@@ -510,6 +538,12 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await cmd_training(update, context)
     if text == BTN_INVITE:
         return await cmd_invite(update, context)
+    if text == BTN_SCENARIO:
+        return await cmd_scenario(update, context)
+    if text == BTN_COST:
+        return await cmd_cost(update, context)
+    if text == BTN_REPORT:
+        return await cmd_report(update, context)
     if text == BTN_HELP:
         return await cmd_help(update, context)
     await answer_question(update, context, text)
@@ -688,6 +722,245 @@ async def cmd_invite(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_text(link)
 
 
+# ---------- آزمون سناریو + ارزشیابی هزینه + گزارش ارزشیابی ----------
+def _sc_lab(context: ContextTypes.DEFAULT_TYPE) -> dict:
+    return context.user_data.get("scenario_lab") or {}
+
+
+async def cmd_scenario(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lab = context.user_data.get("scenario_lab")
+    if lab and lab.get("active") and lab.get("current"):
+        sc = next((s for s in SCENARIOS if s["id"] == lab["current"]), None)
+        if sc:
+            await update.effective_message.reply_text(
+                f"🎬 در حال آزمون سناریوی «{sc['title']}» هستید.\n\n{sc['text']}\n\n"
+                "✍️ واکنش خود را بنویسید؛ برای پایان آزمون /cancel را بزنید.",
+                reply_markup=MAIN_KEYBOARD)
+            return
+    if not context.user_data.get("scenario_lab"):
+        context.user_data["scenario_lab"] = {"active": True, "path": None,
+                                             "asked": [], "results": {}, "current": None}
+    else:
+        context.user_data["scenario_lab"].update({"active": True, "current": None})
+    lab = context.user_data["scenario_lab"]
+    if lab.get("path") in SPECIALIST_LABELS:
+        await _present_scenario(update, context)
+        return
+    rows = [[InlineKeyboardButton("✅ بله، زیر درمان منظم متخصص است", callback_data="scpath:specialist")],
+            [InlineKeyboardButton("❌ نه؛ تنها هستیم", callback_data="scpath:alone")],
+            [InlineKeyboardButton("🔁 درمان قطع‌ووصل است", callback_data="scpath:alone")]]
+    await update.effective_message.reply_text(
+        "🧪 *آزمون سناریو*\n\n"
+        "سناریوهای واقعی مراقبت را می‌بینید؛ واکنش‌تان را آزادانه می‌نویسید و *هوش مصنوعی* "
+        "آن را از نظر بالینی ارزیابی می‌کند (نمره + نکته‌ی بهبود).\n\n"
+        "ابتدا: آیا بیمار شما الان زیر درمان منظم متخصص (روان‌پزشک/کلینیک) است؟",
+        reply_markup=InlineKeyboardMarkup(rows), parse_mode="Markdown")
+
+
+async def on_scpath(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    path = (q.data or "").split(":", 1)[1]
+    lab = context.user_data.setdefault("scenario_lab", {})
+    lab.update({"active": True, "path": path, "asked": [], "results": {}, "current": None})
+    context.user_data["specialist_path"] = path
+    await q.answer()
+    await update.effective_message.reply_text(
+        f"ثبت شد: {SPECIALIST_LABELS.get(path, path)}\n"
+        "سناریوها بر همین اساس انتخاب می‌شوند. 🎬", reply_markup=MAIN_KEYBOARD)
+    await _present_scenario(update, context)
+
+
+def _scenario_pool(path):
+    return [s for s in SCENARIOS if s["audience"] in ("all", path)]
+
+
+async def _present_scenario(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lab = context.user_data["scenario_lab"]
+    pool_all = _scenario_pool(lab.get("path"))
+    pool = [s for s in pool_all if s["id"] not in lab.get("asked", [])]
+    if not pool:
+        return await _scenario_report(update, context)
+    sc = pool[0]
+    lab["asked"].append(sc["id"])
+    lab["current"] = sc["id"]
+    n = len(lab["asked"])
+    await update.effective_message.reply_text(
+        f"🎬 سناریوی {n} از {len(pool_all)}: «{sc['title']}»\n\n{sc['text']}\n\n"
+        "✍️ در این موقعیت واقعاً چه می‌کردید؟ واکنش‌تان را بنویسید…\n"
+        "(_برای پایان آزمون: /cancel_)", parse_mode="Markdown")
+
+
+async def _answer_scenario(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
+    lab = context.user_data.get("scenario_lab") or {}
+    sc = next((s for s in SCENARIOS if s["id"] == lab.get("current")), None)
+    if not sc:
+        return
+    if throttled(update.effective_user.id, context):
+        await update.effective_message.reply_text("⏳ چند لحظه صبر کنید و دوباره بنویسید.")
+        return
+    typing = asyncio.create_task(_keep_typing(update.effective_chat.id, context))
+    data = None
+    try:
+        prompt = build_eval_prompt(sc, text[:1200])
+        data = await asyncio.to_thread(ask_ai, prompt, "family")
+    except Exception as e:
+        log.warning("ارزیابی سناریو با هوش مصنوعی ممکن نشد (%s).", e)
+    finally:
+        typing.cancel()
+    score = None
+    feedback = ""
+    if data and data.get("answer"):
+        feedback = data["answer"].strip()
+        m = re.search(r"نمره[^0-9۰-۹]{0,15}?([0-9۰-۹]+)", feedback)
+        if m:
+            num = m.group(1).translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789"))
+            score = max(0, min(10, int(num)))
+    lab.setdefault("results", {})[sc["id"]] = score
+    lab["current"] = None
+    if not feedback:
+        feedback = ("⚠️ ارزیاب هوش مصنوعی موقتاً در دسترس نیست؛ "
+                    "نکته‌ی آموزشی این سناریو:\n\n" + sc["teach"])
+    await send_long(update, f"📋 ارزیابی واکنش شما به «{sc['title']}»:\n\n" + feedback)
+    rows = [[InlineKeyboardButton("▶️ سناریوی بعدی", callback_data="scnext")],
+            [InlineKeyboardButton("📊 پایان و گزارش ارزشیابی", callback_data="scend")]]
+    await update.effective_message.reply_text("ادامه می‌دهید؟", reply_markup=InlineKeyboardMarkup(rows))
+
+
+async def on_scnext(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    await _present_scenario(update, context)
+
+
+async def on_scend(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    await _scenario_report(update, context)
+
+
+async def _scenario_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lab = context.user_data.get("scenario_lab") or {}
+    results = lab.get("results", {})
+    asked = lab.get("asked", [])
+    path = lab.get("path")
+    lab["active"] = False
+    lab["current"] = None
+    if not asked:
+        await update.effective_message.reply_text(
+            "هنوز سناریویی پاسخ داده نشده است. با /scenario شروع کنید.",
+            reply_markup=MAIN_KEYBOARD)
+        return
+    scored = [v for v in results.values() if v is not None]
+    avg = round(sum(scored) / len(scored), 1) if scored else None
+    weak = [next(s for s in SCENARIOS if s["id"] == sid)
+            for sid, v in results.items() if (v or 0) < 6]
+    lines = ["📊 *گزارش آزمون سناریو*", ""]
+    lines.append(f"مسیر: {SPECIALIST_LABELS.get(path, 'نامشخص')}")
+    lines.append(f"سناریوهای پاسخ‌داده: {len(asked)}")
+    if avg is not None:
+        lines.append(f"میانگین نمره: {avg} از ۱۰")
+    if weak:
+        lines += ["", "🧩 *سناریوهای نیازمند مرور:*"]
+        for s in weak[:3]:
+            lines.append(f"• «{s['title']}» — {s['teach']}")
+    lines.append("")
+    if path == "alone":
+        lines.append("🔹 شما فعلاً بدون متخصص پیش می‌روید. اگر میانگین زیر ۷ است یا سناریوی ضعیف "
+                     "دارید، وصل‌کردن یک «یار تخصصی» (روان‌پزشک/کلینیک) اولویت اول است؛ "
+                     "شروع از مراکز بهداشت و شبکه‌ی بهورز هزینه‌ی کمی دارد.")
+    else:
+        lines.append("🔹 چون تیم درمان دارید، قدم بعدی تقویت همکاری است: مشاهدات مکتوب، "
+                     "شرکت در جلسات خانواده و پیگیری منظم عوارض دارو.")
+    lines += ["", "برای تصویر کامل: /report — برای آموزش ساختاریافته: /training"]
+    await send_long(update, "\n".join(lines), reply_markup=MAIN_KEYBOARD, parse_mode="Markdown")
+
+
+async def cmd_cost(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["cost_flow"] = {"step": 0, "answers": []}
+    await _ask_cost(update, context)
+
+
+async def _ask_cost(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    flow = context.user_data.get("cost_flow") or {}
+    step = flow.get("step", 0)
+    if step >= len(COST_QUESTIONS):
+        return await _cost_result(update, context)
+    cq = COST_QUESTIONS[step]
+    rows = [[InlineKeyboardButton(label, callback_data=f"cost:{step}:{score}")]
+            for label, score in cq["options"]]
+    await update.effective_message.reply_text(
+        f"💰 *ارزشیابی هزینه‌ی مراقبت* ({step + 1} از {len(COST_QUESTIONS)})\n\n{cq['q']}",
+        reply_markup=InlineKeyboardMarkup(rows), parse_mode="Markdown")
+
+
+async def on_cost_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    flow = context.user_data.setdefault("cost_flow", {"step": 0, "answers": []})
+    try:
+        _, step, score = (q.data or "").split(":")
+        step, score = int(step), int(score)
+    except ValueError:
+        await q.answer()
+        return
+    if step != flow.get("step") or not 0 <= score <= 2:
+        await q.answer("این پرسش قدیمی است.")
+        return
+    flow["answers"].append(score)
+    flow["step"] = step + 1
+    await q.answer()
+    await _ask_cost(update, context)
+
+
+async def _cost_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    flow = context.user_data.pop("cost_flow", {})
+    total = sum(flow.get("answers", []))
+    tier = next((t for t in COST_TIERS if t[0] <= total <= t[1]), COST_TIERS[-1])
+    context.user_data["cost_profile"] = {
+        "score": total, "tier": tier[2], "answers": flow.get("answers", []),
+        "date": datetime.now().strftime("%Y-%m-%d")}
+    text = ("💰 *نتیجه‌ی ارزشیابی هزینه*\n\n"
+            f"امتیاز فشار مالی: {total} از ۱۲\nوضعیت: {tier[2]}\n\n{tier[3]}\n\n"
+            "برای دیدن این نتیجه در کنار بقیه‌ی ارزیابی‌ها: /report")
+    await send_long(update, text, reply_markup=MAIN_KEYBOARD, parse_mode="Markdown")
+
+
+async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    prog = context.user_data.get("academy") or {}
+    done_mod = sum(1 for m in CAREGIVER_MODULES if m["id"] in prog)
+    lab = context.user_data.get("scenario_lab") or {}
+    results = lab.get("results", {})
+    scored = [v for v in results.values() if v is not None]
+    avg = round(sum(scored) / len(scored), 1) if scored else None
+    hist = context.user_data.get("risk_history") or []
+    cost = context.user_data.get("cost_profile") or {}
+    path = context.user_data.get("specialist_path")
+    lines = ["📊 *گزارش ارزشیابی همراه*", ""]
+    lines.append(f"👤 نقش: {ROLE_OPTIONS[get_role(context)][0]}")
+    lines.append(f"🩺 مسیر درمان بیمار: {SPECIALIST_LABELS.get(path, 'تعیین نشده (/scenario)')}")
+    lines.append(f"🎓 ماژول‌های آموزشی: {done_mod} از {len(CAREGIVER_MODULES)}")
+    if results:
+        s = f"میانگین نمره: {avg} از ۱۰" if avg is not None else "بدون نمره (ارزیاب آفلاین)"
+        lines.append(f"🧪 آزمون سناریو: {len(results)} پاسخ | {s}")
+    if hist:
+        lines.append(f"📈 پایش خطر: {len(hist)} ثبت | آخرین: {hist[-1]['score']} از ۷۶ ({hist[-1].get('level', '')})")
+    if cost:
+        lines.append(f"💰 هزینه‌ی مراقبت: {cost.get('tier', '—')} (امتیاز {cost.get('score', '—')} از ۱۲)")
+    recs = []
+    if path == "alone":
+        recs.append("🔹 وصل‌کردن متخصص/کلینیک — اولویت اول برای مسیرِ تنها")
+    if done_mod < len(CAREGIVER_MODULES):
+        recs.append(f"🔹 تکمیل {len(CAREGIVER_MODULES) - done_mod} ماژول باقی‌مانده‌ی /training")
+    if avg is not None and avg < 7:
+        recs.append("🔹 مرور دوباره‌ی سناریوهای ضعیف با /scenario")
+    if str(cost.get("tier", "")).startswith("🚨"):
+        recs.append("🔹 اقدام فوری بخش هزینه: گفت‌وگو با پزشک درباره‌ی رژیم ارزان‌ترِ مؤثر")
+    if hist and hist[-1]["score"] >= 28:
+        recs.append("🔹 امتیاز خطر بالاست؛ پایش هفتگی با /risk و تماس با تیم درمان")
+    if not recs:
+        recs.append("🔹 همه‌ی شاخص‌ها خوب است — ادامه‌ی همین مسیر ✅")
+    lines += ["", "*توصیه‌های اولویت‌دار:*"] + recs
+    lines += ["", "_این گزارش ابزار آموزشی است و جایگزین ارزیابی بالینی نیست._"]
+    await send_long(update, "\n".join(lines), reply_markup=MAIN_KEYBOARD, parse_mode="Markdown")
+
+
 # ---------- پایش خطر ----------
 async def cmd_risk(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["risk"] = {"step": 0, "answers": {}}
@@ -848,6 +1121,9 @@ async def _post_init(app: Application) -> None:
         BotCommand("role", "نقش شما: بیمار / همراه / متخصص"),
         BotCommand("training", "دوره‌ی آموزش همراه + آزمون"),
         BotCommand("invite", "لینک دعوت اختصاصی با نقش شما"),
+        BotCommand("scenario", "آزمون سناریو + ارزیابی هوش مصنوعی"),
+        BotCommand("cost", "ارزشیابی هزینه‌ی مراقبت"),
+        BotCommand("report", "گزارش ارزشیابی همراه"),
         BotCommand("history", "روند پایش‌های قبلی شما"),
         BotCommand("about", "درباره‌ی ربات و منابع"),
         BotCommand("cancel", "لغو ارزیابی در جریان"),
@@ -886,6 +1162,13 @@ def main():
     app.add_handler(CallbackQueryHandler(on_section_button, pattern=r"^sec:\d+$"))
     app.add_handler(CommandHandler("training", cmd_training))
     app.add_handler(CommandHandler("invite", cmd_invite))
+    app.add_handler(CommandHandler("scenario", cmd_scenario))
+    app.add_handler(CommandHandler("cost", cmd_cost))
+    app.add_handler(CommandHandler("report", cmd_report))
+    app.add_handler(CallbackQueryHandler(on_scpath, pattern=r"^scpath:(specialist|alone)$"))
+    app.add_handler(CallbackQueryHandler(on_scnext, pattern=r"^scnext$"))
+    app.add_handler(CallbackQueryHandler(on_scend, pattern=r"^scend$"))
+    app.add_handler(CallbackQueryHandler(on_cost_button, pattern=r"^cost:\d+:\d+$"))
     app.add_handler(CallbackQueryHandler(on_train_module, pattern=r"^train:[a-z-]+$"))
     app.add_handler(CallbackQueryHandler(on_train_answer, pattern=r"^tq:[a-z-]+:\d+:\d+$"))
     app.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND, on_message))
