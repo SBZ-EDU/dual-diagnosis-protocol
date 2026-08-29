@@ -12,7 +12,7 @@
     TELEGRAM_BOT_TOKEN=... python bot/telegram_bot.py
     # یا توکن را در فایل .env کنار مخزن بگذارید (گیت‌نادیده است)
 
-حریم خصوصی: متن پیام‌های کاربران لاگ نمی‌شود؛ ارزیابی خطر بدون نام بیمار است.
+حریم خصوصی: پرسش‌های آزاد لاگ نمی‌شوند؛ ارزیابی خطر بدون نام، و آرشیو سناریو فقط با شناسه‌ی تلگرام و قابل حذف توسط کاربر (/archive → 🗑) نگه داشته می‌شود.
 """
 from __future__ import annotations
 import asyncio
@@ -120,7 +120,7 @@ TIPS = [
     ("درمان یکپارچه، نه موازی", "در تشخیص دوگانه، درمان همزمان سایکوز و مصرف مواد بهتر از درمان موازی یا متوالی است؛ محروم‌کردن بیمار از خدمات به‌خاطر «اعتیاد» خلاف توصیه NICE است.", "پروتکل · NICE CG120"),
     ("حشیش و خطر سایکوز", "مصرف حشیش در نوجوانی خطر سایکوز در بزرگسالی را تا حدود ۴ برابر افزایش می‌دهد؛ اثر دوز-واکنش مستند است.", "پروتکل · یافته‌های ۲۰۲۳-۲۰۲۴"),
     ("خواب، سنگ‌بنای ثبات", "کم‌خوابی هم علامت هشدار عود است هم عامل تشدیدکننده؛ حفظ نظم خواب و غربالگری مصرف مواد در تشدید علائم اولین گام‌های ارزیابی‌اند.", "پروتکل · ارزیابی تشدید"),
-    ("کلوزاپین و پایش", "کلوزاپین در اسکیزوفرنی مقاوم به درمان و کاهش مصرف الکل همراه با سایکوز قوی‌ترین سیگنال را دارد؛ پایش منظم خون و عوارض متابولیک الزامی است.", "پروتکل · APA 2020"),
+    ("کلوزاپین و پایش", "کلوزاپین در اسکیزوفرنی مقاوم به درمان و کاهش مصرف الکل همراه سایکوز قوی‌ترین سیگنال را دارد؛ پس از حذف REMS در ۲۰۲۵، پایش ANC و عوارض متابولیک دیگر «الزام قانونی» نیست اما پایه‌ی مراقبت و توصیه‌ی پزشکی است.", "پروتکل · APA 2020 · FDA 2025"),
     ("لغزش = سیگنال، نه شکست", "لغزش مصرف نشانه‌ی نیاز به بازبینی درمان و حمایت بیشتر است، نه دلیل قطع درمان یا سرزنش.", "پروتکل · کاهش آسیب"),
     ("علامت‌های هشدار عود", "بی‌خوابی، انزوا، بدگمانی فزاینده، بی‌قراری، قطع خودسرانه دارو یا برگشت به مصرف؛ دیدن چند علامت همزمان یعنی وقت تماس با تیم درمان.", "پروتکل · پیشگیری از عود"),
     ("پایبندی به دارو", "قطع خودسرانه دارو از قوی‌ترین پیش‌بین‌های عود است؛ درباره عارضه با پزشک صحبت کنید، نه قطع ناگهانی.", "پروتکل · APA 2020"),
@@ -322,8 +322,9 @@ HELP_TEXT = (
     "• /history → روند امتیازهای پایش خطر شما\n"
     "• /about → درباره‌ی معماری ربات و منابع\n"
     "• /cancel → لغو ارزیابی در جریان\n\n"
-    "🔒 حریم خصوصی: متن پیام‌های شما ذخیره نمی‌شود؛ از ارزیابی خطر فقط امتیاز و تاریخ "
-    "(بدون نام و بدون متن) برای نمایش روند نگه داشته می‌شود."
+    "🔒 حریم خصوصی: پرسش‌های آزاد شما ذخیره نمی‌شوند؛ از ارزیابی خطر فقط امتیاز و تاریخ، و از آزمون سناریو "
+    "متن پاسخ و تحلیل AI (بدون نام و شماره — فقط شناسه‌ی تلگرام) برای آرشیو شخصی شما در همین سرور نگه "
+    "داده می‌شود؛ با دکمه‌ی 🗑 در /archive هر زمان می‌توانید پاکش کنید."
 )
 
 ABOUT_TEXT = (
@@ -947,6 +948,19 @@ async def on_scfree(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_text(
         "✍️ واکنش‌تان را همین‌جا بنویسید — منتظرم.")
 
+async def on_scwipe(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """حق حذف آرشیو (هم‌راستا با روحیه‌ی 42 CFR Part 2)."""
+    q = update.callback_query
+    removed = len(context.user_data.pop("scenario_archive", []) or [])
+    context.user_data.pop("level_history", None)
+    lab = context.user_data.get("scenario_lab") or {}
+    lab.pop("results", None)
+    lab["asked"] = []
+    await q.answer("پاک شد ✅")
+    await update.effective_message.reply_text(
+        f"🗑 آرشیو شما پاک شد ({removed} ردیف). سطح همراهی از این پس با فعالیت‌های جدید محاسبه می‌شود.",
+        reply_markup=MAIN_KEYBOARD)
+
 
 async def on_scnext(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer()
@@ -1161,7 +1175,11 @@ async def cmd_archive(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines.append(f"   تحلیل AI: {e['analysis'][:160]}")
         lines.append("")
     lines.append("_آرشیو فقط برای خود شما نگه داشته می‌شود._")
-    await send_long(update, "\n".join(lines), reply_markup=MAIN_KEYBOARD, parse_mode="Markdown")
+    await send_long(update, "\n".join(lines), parse_mode="Markdown")
+    await update.effective_message.reply_text(
+        "مدیریت آرشیو:",
+        reply_markup=InlineKeyboardMarkup(
+            [[InlineKeyboardButton("🗑 آرشیو من را پاک کن", callback_data="scwipe")]]))
 
 
 # ---------- بخش‌های حیاتی ----------
@@ -1398,6 +1416,7 @@ def main():
     app.add_handler(CommandHandler("archive", cmd_archive))
     app.add_handler(CallbackQueryHandler(on_sca_button, pattern=r"^sca:\d+$"))
     app.add_handler(CallbackQueryHandler(on_scfree, pattern=r"^scfree$"))
+    app.add_handler(CallbackQueryHandler(on_scwipe, pattern=r"^scwipe$"))
     app.add_handler(CallbackQueryHandler(on_train_module, pattern=r"^train:[a-z-]+$"))
     app.add_handler(CallbackQueryHandler(on_train_answer, pattern=r"^tq:[a-z-]+:\d+:\d+$"))
     app.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND, on_message))
