@@ -134,10 +134,54 @@ TIPS = [
 ]
 
 
+CRITICAL_SERIES = [
+    ("نشانه‌های هشدار خودکشی",
+     "حوصل‌جمع‌کردن وسایل، خداحافظی‌های عجیب، جمله‌هایی مثل «دیگر زحمت نمی‌کشم» و ناامیدی "
+     "نسبت به آینده نشانه‌های هشدارند. سه کار نجات‌دهنده: پرسیدنِ آرام و مستقیم، دور کردن "
+     "وسایل و تنها نگذاشتن. پرسیدنِ خودکشی خطر را بیشتر نمی‌کند.",
+     "پروتکل · بخش حیاتی | ۱۱۵ · ۱۲۳ · ۱۴۸۰"),
+    ("واکنش به اوردوز",
+     "نفسِ کند، لب کبود، بی‌جا بودن = اورژانس پزشکی. فوراً ۱۱۵؛ اگر نالوکسان دارید مطابق آموزش "
+     "استفاده کنید؛ بیمار را روی پهلو بخوابانید و کنارش بمانید.",
+     "پروتکل · بخش حیاتی"),
+    ("نشانه‌های زودرس عود",
+     "بی‌خوابی، انزوا، بدگمانی فزاینده، بی‌قراری یا برگشت به مصرف — دیدن چند نشانه همزمان یعنی "
+     "همین هفته با تیم درمان تماس بگیرید، نه بعد از بحران.",
+     "پروتکل · بخش حیاتی"),
+    ("قطع خودسرانه‌ی دارو",
+     "شایع‌ترین علت عود همین است. «حالم خوب شد» خودِ اثر داروست؛ هر تغییری فقط با پزشک — "
+     "و اگر عارضه اذیت می‌کند، به پزشک بگویید تا تنظیم کند.",
+     "پروتکل · بخش حیاتی · APA 2020"),
+    ("اورژانس دارویی: تب + سفتی عضله + گیجی",
+     "این ترکیب می‌تواند سندرم بدخیم نورولپتیک باشد و تأخیرش خطرناک است: همان روز اورژانس. "
+     "عوارض معمولی (لرزش، بی‌قراری) را یادداشت کنید و به پزشک خبر بدهید؛ دارو را ناگهانی قطع نکنید.",
+     "پروتکل · بخش حیاتی"),
+    ("در بحران خشم: ایمنی اول، بحث نه",
+     "در اوج هیجان بحث و منطق‌بازی کارساز نیست و آتش را تندتر می‌کند. فاصله بگیرید، وسایل خطرناک "
+     "را دور کنید و گفت‌وگو را برای زمان آرامش نگه دارید.",
+     "پروتکل · بخش حیاتی"),
+]
+
+
+def _channel_promo() -> str:
+    """لینک کانال برای دعوت دیگران (در پیام‌ها و پست‌های کانال)."""
+    if not TELEGRAM_CHANNEL_ID:
+        return ""
+    return f"\n\n🔔 این آموزش را به خانواده‌های دیگری که در این مسیرند بفرستید: {channel_link()}"
+
+
+def critical_post_of_day() -> str:
+    day = time.localtime().tm_yday
+    title, body, source = CRITICAL_SERIES[(day // 3) % len(CRITICAL_SERIES)]
+    return (f"⚠️ *آموزش حیاتی | {title}*\n\n{body}\n\n📖 منبع: {source}"
+            f"{_channel_promo()}\n{DISCLAIMER}")
+
+
 def tip_of_day(offset: int = 0) -> str:
     day = time.localtime().tm_yday + offset
     title, body, source = TIPS[day % len(TIPS)]
-    return f"🎓 *آموزش روز | {title}*\n\n{body}\n\n📖 منبع: {source}\n{DISCLAIMER}"
+    return (f"🎓 *آموزش روز | {title}*\n\n{body}\n\n📖 منبع: {source}"
+            f"{_channel_promo()}\n{DISCLAIMER}")
 
 
 # ============================================================
@@ -240,10 +284,11 @@ BTN_INVITE = "🔗 دعوت از دیگران"
 BTN_SCENARIO = "🧪 آزمون سناریو"
 BTN_COST = "💰 ارزشیابی هزینه"
 BTN_REPORT = "📊 گزارش ارزشیابی"
+BTN_CRITICAL = "⚠️ بخش‌های حیاتی"
 BTN_ROLE = "👤 نقش من"
 
 MAIN_KEYBOARD = ReplyKeyboardMarkup(
-    [[BTN_RISK, BTN_TIP], [BTN_SECTIONS, BTN_ROLE], [BTN_TRAINING, BTN_INVITE], [BTN_SCENARIO, BTN_COST], [BTN_REPORT, BTN_HELP]],
+    [[BTN_RISK, BTN_TIP], [BTN_SECTIONS, BTN_ROLE], [BTN_TRAINING, BTN_INVITE], [BTN_SCENARIO, BTN_COST], [BTN_CRITICAL, BTN_REPORT], [BTN_HELP]],
     resize_keyboard=True,
     input_field_placeholder="سؤال خود را فارسی بنویسید…",
 )
@@ -272,6 +317,7 @@ HELP_TEXT = (
     f"• {BTN_SCENARIO} / /scenario → آزمون سناریو با ارزیابی هوش مصنوعی\n"
     f"• {BTN_COST} / /cost → ارزشیابی هزینه‌ی مراقبت\n"
     f"• {BTN_REPORT} / /report → گزارش ارزشیابی کلی همراه\n"
+    f"• {BTN_CRITICAL} / /critical → آموزش ویژه‌ی بخش‌های حیاتی (۵ پرسش)\n"
     "• /history → روند امتیازهای پایش خطر شما\n"
     "• /about → درباره‌ی معماری ربات و منابع\n"
     "• /cancel → لغو ارزیابی در جریان\n\n"
@@ -349,10 +395,13 @@ async def post_to_channel(bot, text: str) -> None:
 
 
 async def job_daily_tip(context: ContextTypes.DEFAULT_TYPE) -> None:
-    """پست آموزشی روزانه به کانال (هر روز ساعت ۹ صبح به وقت تهران)."""
+    """پست آموزشی روزانه به کانال (۹ صبح تهران) — هر سومین روز از سری حیاتی."""
     try:
-        await post_to_channel(context.bot, tip_of_day())
-        log.info("پست آموزشی روزانه به کانال ارسال شد.")
+        critical_day = time.localtime().tm_yday % 3 == 0
+        text = critical_post_of_day() if critical_day else tip_of_day()
+        await post_to_channel(context.bot, text)
+        log.info("پست آموزشی روزانه به کانال ارسال شد (%s).",
+                 "سری حیاتی" if critical_day else "نکته‌ی روز")
     except Exception as e:
         log.warning("ارسال پست آموزشی به کانال ناموفق: %s", e)
 
@@ -544,6 +593,8 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await cmd_cost(update, context)
     if text == BTN_REPORT:
         return await cmd_report(update, context)
+    if text == BTN_CRITICAL:
+        return await cmd_critical(update, context)
     if text == BTN_HELP:
         return await cmd_help(update, context)
     await answer_question(update, context, text)
@@ -557,15 +608,18 @@ def _academy_progress(context: ContextTypes.DEFAULT_TYPE) -> dict:
 async def cmd_training(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prog = _academy_progress(context)
     done = sum(1 for m in CAREGIVER_MODULES if m["id"] in prog)
-    rows = [[InlineKeyboardButton(("✅ " if m["id"] in prog else "▫️ ") + m["title"][:38],
-                                  callback_data=f"train:{m['id']}")]
-            for m in CAREGIVER_MODULES]
+    ordered = sorted(CAREGIVER_MODULES, key=lambda m: not m.get("critical"))
+    rows = []
+    for m in ordered:
+        mark = ("✅ " if m["id"] in prog else ("⚠️ " if m.get("critical") else "▫️ "))
+        rows.append([InlineKeyboardButton(mark + m["title"][:38],
+                                          callback_data=f"train:{m['id']}")])
     await update.effective_message.reply_text(
         "🎓 *دوره‌ی آموزش همراه*\n\n"
         f"پیشرفت شما: {done} از {len(CAREGIVER_MODULES)} ماژول\n\n"
-        "هر ماژول یک منبع آموزشی (ویدئو یا متن علمی) و یک آزمون ۳ پرسشی دارد؛ "
-        "برای قبولی باید هر ۳ پرسش را درست پاسخ دهید.\n"
-        "پس از تکمیل همه‌ی ماژول‌ها، گواهی آموزش همراه با کد اعتبارسنجی از سایت مرکز صادر می‌شود.",
+        "⚠️ بخش‌های حیاتی (نشان‌دار) اولویت اول هستند و آزمون ۵ پرسشی + آموزش عمیق‌تر دارند؛ "
+        "سایر ماژول‌ها ۳ پرسشی‌اند. قبولی = حداقل ۸۰٪.\n"
+        "پس از تکمیل همه، گواهی با کد اعتبارسنجی از سایت مرکز صادر می‌شود.",
         reply_markup=InlineKeyboardMarkup(rows), parse_mode="Markdown")
 
 
@@ -579,10 +633,12 @@ async def _ask_training_question(update: Update, context: ContextTypes.DEFAULT_T
     question = quiz[qi]
     head = ""
     if first:
-        head = (f"🎓 *{module['title']}*\n"
+        badge = "⚠️ " if module.get("critical") else ""
+        head = (f"🎓 {badge}*{module['title']}*\n"
                 f"📚 منبع: {module['source']} ({module['duration']})\n"
                 f"{module['summary']}\n"
-                f"🔗 {module['url']}\n\n")
+                + (f"⚠️ نکات حیاتی: {module['deep']}\n" if module.get("deep") else "")
+                + f"🔗 {module['url']}\n\n")
     msg = await update.effective_message.reply_text(
         head + f"❓ *پرسش {qi + 1} از {len(quiz)}*\n\n{question['q']}",
         reply_markup=InlineKeyboardMarkup(
@@ -637,7 +693,7 @@ async def _finish_training(update: Update, context: ContextTypes.DEFAULT_TYPE, m
     ok = sum(1 for i, a in enumerate(answers) if i < len(quiz) and a == quiz[i]["a"])
     total = len(quiz)
     score = round(100 * ok / total) if total else 0
-    if score >= 100:
+    if score >= 80:
         prog = _academy_progress(context)
         prog[module["id"]] = score
         done = sum(1 for m in CAREGIVER_MODULES if m["id"] in prog)
@@ -648,10 +704,12 @@ async def _finish_training(update: Update, context: ContextTypes.DEFAULT_TYPE, m
             text += ("\n\n🎉 تبریک! همه‌ی ماژول‌های *دوره‌ی آموزش همراه* را گذراندید.\n"
                      "برای دریافت گواهی با کد اعتبارسنجی، از بخش آکادمی سایت مرکز اقدام کنید:\n"
                      + SITE_ACADEMY_URL)
+        if TELEGRAM_CHANNEL_ID:
+            text += "\n\n📢 کانال آموزش روزانه: " + channel_link()
         await send_long(update, text, reply_markup=MAIN_KEYBOARD, parse_mode="Markdown")
     else:
         await update.effective_message.reply_text(
-            f"📚 نمره: {ok} از {total} درست — برای قبولی باید هر ۳ پرسش درست باشد.\n"
+            f"📚 نمره: {ok} از {total} درست — حداقل ۸۰٪ لازم است ({'همه درست' if total == 3 else '۴ از ۵'}).\n"
             "منبع را دوباره مرور کنید و ماژول را تکرار کنید:",
             reply_markup=InlineKeyboardMarkup(
                 [[InlineKeyboardButton("🔄 تلاش دوباره", callback_data=f"train:{module['id']}")]]))
@@ -716,7 +774,9 @@ async def cmd_invite(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "نقش شما به‌عنوان *نقش پیشنهادی* برایش ثبت می‌شود و پاسخ‌های ربات از همان ابتدا "
         "متناسب با همان نقش خواهد بود.\n\n"
         "💡 اگر کسی نقش پیشنهادی را نخواست، با دستور /role هر زمانی می‌تواند تغییرش دهد.\n"
-        f"👥 تاکنون {joined} نفر با لینک شما پیوسته‌اند."),
+        f"👥 تاکنون {joined} نفر با لینک شما پیوسته‌اند."
+        + (f"\n\n📢 کانال آموزش روزانه برای همه: {channel_link()}"
+           if TELEGRAM_CHANNEL_ID else "")),
         parse_mode="Markdown")
     # لینک به‌صورت متن ساده تا زیرخط‌های نام ربات Markdown را نشکند و کلیک‌پذیر بماند
     await update.effective_message.reply_text(link)
@@ -870,6 +930,8 @@ async def _scenario_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines.append("🔹 چون تیم درمان دارید، قدم بعدی تقویت همکاری است: مشاهدات مکتوب، "
                      "شرکت در جلسات خانواده و پیگیری منظم عوارض دارو.")
     lines += ["", "برای تصویر کامل: /report — برای آموزش ساختاریافته: /training"]
+    if TELEGRAM_CHANNEL_ID:
+        lines += ["", "📢 کانال آموزش روزانه: " + channel_link()]
     await send_long(update, "\n".join(lines), reply_markup=MAIN_KEYBOARD, parse_mode="Markdown")
 
 
@@ -957,8 +1019,30 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not recs:
         recs.append("🔹 همه‌ی شاخص‌ها خوب است — ادامه‌ی همین مسیر ✅")
     lines += ["", "*توصیه‌های اولویت‌دار:*"] + recs
+    if TELEGRAM_CHANNEL_ID:
+        lines += ["", "📢 کانال آموزش روزانه: " + channel_link()]
     lines += ["", "_این گزارش ابزار آموزشی است و جایگزین ارزیابی بالینی نیست._"]
     await send_long(update, "\n".join(lines), reply_markup=MAIN_KEYBOARD, parse_mode="Markdown")
+
+
+# ---------- بخش‌های حیاتی ----------
+async def cmd_critical(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    prog = _academy_progress(context)
+    crit = [m for m in CAREGIVER_MODULES if m.get("critical")]
+    parts = []
+    for m in crit:
+        done = "✅" if m["id"] in prog else "❌"
+        parts.append(f"⚠️ *{m['title']}* {done}\n{m['deep']}")
+    text = ("⚠️ *بخش‌های حیاتی — آموزش ویژه*\n\n"
+            "این سه بخش بیشترین نقش را در نجات جان و جلوگیری از بحران دارند؛ "
+            "آزمون هر کدام ۵ پرسشی است و آموزش عمیق‌تری دارد.\n\n"
+            + "\n\n".join(parts))
+    if TELEGRAM_CHANNEL_ID:
+        text += f"\n\n📢 آموزش روزانه‌ی این مسیر (برای خودتان و معرفی به دیگران): {channel_link()}"
+    rows = [[InlineKeyboardButton(("✅ " if m["id"] in prog else "⚠️ ") + m["title"][:38],
+                                  callback_data=f"train:{m['id']}")]
+            for m in crit]
+    await send_long(update, text, reply_markup=InlineKeyboardMarkup(rows), parse_mode="Markdown")
 
 
 # ---------- پایش خطر ----------
@@ -1124,6 +1208,7 @@ async def _post_init(app: Application) -> None:
         BotCommand("scenario", "آزمون سناریو + ارزیابی هوش مصنوعی"),
         BotCommand("cost", "ارزشیابی هزینه‌ی مراقبت"),
         BotCommand("report", "گزارش ارزشیابی همراه"),
+        BotCommand("critical", "آموزش ویژه‌ی بخش‌های حیاتی"),
         BotCommand("history", "روند پایش‌های قبلی شما"),
         BotCommand("about", "درباره‌ی ربات و منابع"),
         BotCommand("cancel", "لغو ارزیابی در جریان"),
@@ -1165,6 +1250,7 @@ def main():
     app.add_handler(CommandHandler("scenario", cmd_scenario))
     app.add_handler(CommandHandler("cost", cmd_cost))
     app.add_handler(CommandHandler("report", cmd_report))
+    app.add_handler(CommandHandler("critical", cmd_critical))
     app.add_handler(CallbackQueryHandler(on_scpath, pattern=r"^scpath:(specialist|alone)$"))
     app.add_handler(CallbackQueryHandler(on_scnext, pattern=r"^scnext$"))
     app.add_handler(CallbackQueryHandler(on_scend, pattern=r"^scend$"))
