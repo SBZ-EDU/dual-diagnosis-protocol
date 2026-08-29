@@ -55,7 +55,8 @@ dual-diagnosis-protocol/
 - فونت **وزیرمتن** (Vazirmatn)
 - طراحی **واکنش‌گرا** (Mobile-friendly)
 - پشتیبانی از **چاپ** برگه معرفی بیمار
-- بدون وابستگی خارجی در زمان اجرا (CSS محلی)
+- فونت وزیرمتن از گوگل‌فونت به‌صورت **غیرمسدودکننده** بارگذاری می‌شود؛ در صورت قطع دسترسی،
+  صفحه بی‌درنگ با Tahoma نمایش داده می‌شود (CSS محلی، بدون هیچ JS)
 
 ---
 
@@ -73,3 +74,10 @@ dual-diagnosis-protocol/
 - WFSBP Guidelines — Hasan et al. (2015/2023)
 - Canadian Schizophrenia Guidelines (2023)
 - Schizophrenia Bulletin (2024) · Annals of General Psychiatry (2024) · WADD-SEPD Consensus (2024-2025)
+
+---
+
+## 🔗 پروژه‌های مرتبط
+
+- **دستیار هوشمند تلگرام:** [@AI_Aiddiction_Assistant_bot](https://t.me/AI_Aiddiction_Assistant_bot) — پرسش‌وپاسخ از همین پروتکل + پایش خطر
+- **موتور RAG:** [SBZ-EDU/dual-diagnosis-rag](https://github.com/SBZ-EDU/dual-diagnosis-rag) — بازیابی معنایی روی پروتکل، ۲۰۰+ مقاله و راهنماها
