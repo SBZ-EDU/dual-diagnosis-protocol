@@ -94,3 +94,9 @@ dual-diagnosis-protocol/
 
 - **دستیار هوشمند تلگرام:** [@AI_Aiddiction_Assistant_bot](https://t.me/AI_Aiddiction_Assistant_bot) — پرسش‌وپاسخ از همین پروتکل + پایش خطر
 - **موتور RAG:** [SBZ-EDU/dual-diagnosis-rag](https://github.com/SBZ-EDU/dual-diagnosis-rag) — بازیابی معنایی روی پروتکل، ۲۰۰+ مقاله و راهنماها
+
+## 💰 تأمین مالی پروژه
+
+ماژول [`funding/`](funding/) — یابنده‌ی شتاب‌دهنده/اعتبار ابری: ۱۳ برنامه ردیابی‌شده (مهلت، سهام، مانع تحریم)،
+تولید خودکار پیش‌نویس درخواست برای هر برنامه و داشبورد وضعیت.
+`python funding/check_status.py && python funding/generate.py`

@@ -1,0 +1,387 @@
+{
+  "updated": "2026-08-29",
+  "startup": {
+    "name": "Hamrah — Dual Diagnosis Clinical Hub",
+    "persian_name": "همراه | مرکز هوشمند تشخیص دوگانه",
+    "site": "https://dual-diagnosis-clinical-hub.elasa2next.workers.dev",
+    "bot": "@AI_Aiddiction_Assistant_bot",
+    "channel": "@AI_Aiddiction_Assistant",
+    "github": "https://github.com/SBZ-EDU"
+  },
+  "common_blocker": {
+    "title": "پیش‌نیاز ۷ برنامه از ۱۳: شرکت ثبت‌شده خارج از ایران",
+    "detail": "برنامه‌های NVIDIA، Microsoft، Google، AWS و Techstars شرکت‌های آمریکایی‌اند و طبق OFAC به متقاضی مقیم ایران خدمات نمی‌دهند. راه‌حل: ثبت Ltd ترکیه (۳-۵ روز کاری، از راه دور با وکالت‌نامه) یا OÜ استونی — این قفل را باز می‌کند.",
+    "unlock_chain": "شرکت ترکیه → NVIDIA Inception → اعتبار Nebius ($150K) + AWS Activate Portfolio ($100K→$200K)"
+  },
+  "programs": [
+    {
+      "id": "fi-istanbul",
+      "name": "Founder Institute · Istanbul Chapter",
+      "org": "Founder Institute",
+      "country": "🇹🇷 ترکیه",
+      "priority": 1,
+      "status": "open",
+      "deadline": "2026-08-30",
+      "deadline_note": "مهلت زودهنگام — فردا! (برنامه: ۱۷ نوامبر ۲۰۲۶ تا ۲۴ فوریه ۲۰۲۷؛ آنبوردینگ ۱۰ نوامبر)",
+      "format": "کاملاً آنلاین",
+      "iran_access": "unclear",
+      "response_time": "~۲ هفته",
+      "followup_days": 14,
+      "benefits": "برنامه‌ی ساخت‌یافته‌ی پیش‌بذر · شبکه‌ی ۱۰۰ کشور · بدون نیاز به ایده‌ی آماده · ~۶۰٪ گروه تک‌بنیان‌گذارند",
+      "equity": "— (سهام نمی‌گیرد)",
+      "cost": "۵۴۹ دلار (زودهنگام) → ۷۴۹ دلار — تا جلسه‌ای مشخص قابل بازگشت",
+      "requirements": [
+        "فرم درخواست",
+        "پرداخت کارت بین‌المللی (مانع اصلی)"
+      ],
+      "blockers": [
+        "پرداخت کارت از ایران"
+      ],
+      "link": "https://fi.co/apply/istanbul",
+      "verified": "2026-08-29",
+      "angle": "Structured pre-seed program that explicitly works for solo founders (~60% of cohorts) and does not require a finished idea. Our MVP is already live — we join to sharpen go-to-market, pricing and fundraising while keeping 100% ownership. Fully online, so no travel is needed.",
+      "last_checked": "2026-08-29"
+    },
+    {
+      "id": "dmz-incubator",
+      "name": "DMZ Incubator · Fall 2026",
+      "org": "Toronto Metropolitan University",
+      "country": "🇨🇦 کانادا",
+      "priority": 1,
+      "status": "open",
+      "deadline": "2026-09-01",
+      "deadline_note": "کوهورت پاییز ۲۰۲۶ — ۳ روز مانده",
+      "format": "مجازی موجود — سفر فقط برای رویدادهای pitch",
+      "iran_access": "unclear",
+      "response_time": "۲ تا ۳ هفته برای بررسی اولیه",
+      "followup_days": 21,
+      "benefits": "۱۸ ماه · ۵۰۰ هزار تا ۱ میلیون دلار اعتبار فنی · شبکه‌ی سرمایه‌گذاران",
+      "equity": "۲.۵٪ سهام، بدون پرداخت نقدی",
+      "cost": "رایگان (به‌جز سهام)",
+      "requirements": [
+        "حداقل یک بنیان‌گذار تمام‌وقت",
+        "سرپرست فنی داخلی الزامی",
+        "MVP + نشانه‌ی traction",
+        "تعهد ۵-۶ ساعت در ماه"
+      ],
+      "blockers": [
+        "⚠️ بنیان‌گذار تنها رد می‌شود — سرپرست فنی داخلی لازم است"
+      ],
+      "link": "https://dmz.torontomu.ca/incubator",
+      "verified": "2026-08-29",
+      "angle": "DMZ explicitly accepts global founders and its in-kind package ($500K–$1M tech credits) matches our exact bottleneck: AI inference and cloud costs. Our technical lead is the founder (risk flagged), virtual participation is supported, and our MVP + traction story is ready.",
+      "last_checked": "2026-08-29"
+    },
+    {
+      "id": "itu-cekirdek",
+      "name": "İTÜ Çekirdek · BİGG Yatırım 2026–2028",
+      "org": "İTÜ ARI Teknokent",
+      "country": "🇹🇷 ترکیه",
+      "priority": 1,
+      "status": "open",
+      "deadline": null,
+      "deadline_note": "به‌روزرسانی ۲۹ اوت ۲۰۲۶: فراخوان BİGG Yatırım ۲۰۲۶–۲۰۲۸ باز است (تأیید از منابع ترکیه)",
+      "format": "کل فرایند آنلاین — ساکنان خارج استانبول هم می‌توانند",
+      "iran_access": "ok",
+      "response_time": "~۱ ماه",
+      "followup_days": 30,
+      "benefits": "انکوباسیون رایگان + تا ۹۰۰ هزار لیر سرمایه‌گذاری BİGG (دورهای قبلی ~۱.۳۵ میلیون لیر) + مسیر Big Bang",
+      "equity": "۳٪ سهام (مسیر BiGG)",
+      "cost": "رایگان",
+      "requirements": [
+        "شماره‌ی هویت خارجی ترکیه (YU)",
+        "معادل‌سازی مدرک YÖK",
+        "تیم ≥ ۲ نفر"
+      ],
+      "blockers": [
+        "تیم تک‌نفره — نیاز به هم‌بنیان‌گذار دوم",
+        "کارهای YÖK و YU زمان‌بر"
+      ],
+      "link": "https://basvuru.itucekirdek.com/",
+      "verified": "2026-08-29",
+      "angle": "The ONLY program in this list with no sanction barrier for an Iran-resident founder. Turkey is also the fastest place to register the company that unlocks the US programs. İTÜ's network + BiGG funding could finance the company formation itself.",
+      "last_checked": "2026-08-29"
+    },
+    {
+      "id": "ms-foundershub",
+      "name": "Microsoft for Startups · Founders Hub",
+      "org": "Microsoft",
+      "country": "🌍 جهانی",
+      "priority": 2,
+      "status": "open",
+      "deadline": null,
+      "deadline_note": "همیشه باز",
+      "format": "کاملاً آنلاین",
+      "iran_access": "company",
+      "response_time": "۳ روز کاری — سریع‌ترین این فهرست",
+      "followup_days": 5,
+      "benefits": "تا ۱۵۰٬۰۰۰ دلار اعتبار Azure + دسترسی Azure OpenAI",
+      "equity": "صفر",
+      "cost": "رایگان",
+      "requirements": [
+        "قبل از Series C",
+        "کمتر از ۳۵۰ هزار دلار اعتبار مصرف‌شده در طول عمر شرکت",
+        "شرکت غیرایرانی"
+      ],
+      "blockers": [
+        "نیاز به شرکت ثبت‌شده خارج از ایران"
+      ],
+      "link": "https://www.microsoft.com/en-us/startups",
+      "verified": "2026-08-18",
+      "angle": "Fastest yes/no in the list (3 business days) and zero equity. Azure OpenAI would let us upgrade the clinical Q&A from open-weights llama-3.1-8b to a stronger medically-tuned model behind guardrails — directly improving answer quality for patients.",
+      "last_checked": "2026-08-29"
+    },
+    {
+      "id": "nvidia-inception",
+      "name": "NVIDIA Inception",
+      "org": "NVIDIA",
+      "country": "🌍 جهانی",
+      "priority": 2,
+      "status": "open",
+      "deadline": null,
+      "deadline_note": "همیشه باز",
+      "format": "کاملاً آنلاین",
+      "iran_access": "company",
+      "response_time": "چند روز تا ۲ هفته — تماس اولیه از مدیر توسعه‌ی کسب‌وکار",
+      "followup_days": 14,
+      "benefits": "اعتبار DGX Cloud + دسترسی NIM + کلید ورود به اعتبارهای شریک (Nebius ۱۵۰ هزار دلار، AWS ۱۰۰ هزار دلار)",
+      "equity": "صفر",
+      "cost": "رایگان",
+      "requirements": [
+        "شرکت غیرایرانی",
+        "به‌عنوان شرکت محصول درخواست دهید، نه مشاوره‌ای"
+      ],
+      "blockers": [
+        "نیاز به شرکت ثبت‌شده خارج از ایران"
+      ],
+      "link": "https://www.nvidia.com/en-us/startups/",
+      "verified": "2026-08-18",
+      "angle": "We are a GPU-consuming AI product company (RAG re-embedding of a 200+ paper corpus, batch inference, upcoming multilingual embeddings for Persian) — not a consultancy. Inception membership is the master key: it unlocks partner credits (Nebius $150K, AWS $100K) worth more than most seed checks, at zero equity.",
+      "last_checked": "2026-08-29"
+    },
+    {
+      "id": "aws-activate",
+      "name": "AWS Activate",
+      "org": "Amazon Web Services",
+      "country": "🌍 جهانی",
+      "priority": 2,
+      "status": "open",
+      "deadline": null,
+      "deadline_note": "همیشه باز",
+      "format": "کاملاً آنلاین",
+      "iran_access": "company",
+      "response_time": "۱ تا ۲ هفته",
+      "followup_days": 10,
+      "benefits": "Founders تا ۵٬۰۰۰ دلار (بدون سرمایه‌گذار) · Portfolio تا ۲۰۰٬۰۰۰ دلار (با معرفی)",
+      "equity": "صفر",
+      "cost": "رایگان",
+      "requirements": [
+        "شرکت غیرایرانی",
+        "سطح Portfolio نیاز به معرفی دارد"
+      ],
+      "blockers": [
+        "نیاز به شرکت ثبت‌شده خارج از ایران"
+      ],
+      "link": "https://aws.amazon.com/activate/",
+      "verified": "2026-08-18",
+      "angle": "Founders tier needs no VC intro. Our AI stack is currently on Cloudflare Workers; AWS credits would fund the heavy layer we deliberately keep off the edge — batch embedding regeneration, a Persian-language vector index, and log/telemetry storage.",
+      "last_checked": "2026-08-29"
+    },
+    {
+      "id": "google-cloud",
+      "name": "Google for Startups Cloud",
+      "org": "Google",
+      "country": "🌍 جهانی · AI-first",
+      "priority": 2,
+      "status": "open",
+      "deadline": null,
+      "deadline_note": "همیشه باز",
+      "format": "کاملاً آنلاین",
+      "iran_access": "company",
+      "response_time": "۱ تا ۳ هفته",
+      "followup_days": 14,
+      "benefits": "تا ۳۵۰٬۰۰۰ دلار اعتبار — سال اول ۱۰۰٪ تا ۲۵۰ هزار",
+      "equity": "صفر",
+      "cost": "رایگان",
+      "requirements": [
+        "استارتاپ AI-first",
+        "شرکت غیرایرانی",
+        "معرفی از شتاب‌دهنده/سرمایه‌گذار مسیر را کوتاه می‌کند"
+      ],
+      "blockers": [
+        "نیاز به شرکت ثبت‌شده خارج از ایران"
+      ],
+      "link": "https://cloud.google.com/startup",
+      "verified": "2026-08-18",
+      "angle": "We are exactly the 'AI-first' profile Google targets: an LLM-centered clinical assistant. Vertex AI + Gemini would power the clinician-grade tier (citations, safety evals), and the largest year-one credit pool in this list (100% up to $250K).",
+      "last_checked": "2026-08-29"
+    },
+    {
+      "id": "dmz-preincubator",
+      "name": "DMZ Pre-Incubator",
+      "org": "Toronto Metropolitan University",
+      "country": "🇨🇦 کانادا",
+      "priority": 3,
+      "status": "open",
+      "deadline": null,
+      "deadline_note": "تمام سال باز · دو ورودی در سال (هم‌زمان با کوهورت‌های بهار/پاییز)",
+      "format": "مجازی یا حضوری",
+      "iran_access": "unclear",
+      "response_time": "۲ تا ۳ هفته",
+      "followup_days": 21,
+      "benefits": "۹ ماه · پشتیبانی فروش، مربی‌گری، دسترسی سرمایه‌گذار · امکان pitch برای ۱۵۰ هزار دلار",
+      "equity": "۲٪ سهام",
+      "cost": "رایگان (به‌جز سهام)",
+      "requirements": [
+        "MVP",
+        "نشانه‌ی اولیه‌ی traction",
+        "تعهد ۵-۶ ساعت در ماه"
+      ],
+      "blockers": [
+        "بررسی شود که ورودی فعلی باز است"
+      ],
+      "link": "https://dmz.torontomu.ca/pre-incubator",
+      "verified": "2026-08-18",
+      "angle": "Milder sibling of the Incubator (2% vs 2.5%) and we already clear its bar: a live MVP (site + Telegram robot + AI backend) with early traction. Good fallback if the Incubator rejects the solo-founder structure.",
+      "last_checked": "2026-08-29"
+    },
+    {
+      "id": "antler-dubai",
+      "name": "Antler Residency · Dubai",
+      "org": "Antler",
+      "country": "🇦🇪 امارات",
+      "priority": 3,
+      "status": "open",
+      "deadline": null,
+      "deadline_note": "گروه ۱۱ اکتبر ۲۰۲۶ (تأییدشده) · پذیرش مستمر",
+      "format": "حضوری در دبی",
+      "iran_access": "unclear",
+      "response_time": "~۲ تا ۴ هفته",
+      "followup_days": 21,
+      "benefits": "سرمایه‌گذاری روز صفر · هم‌بنیان‌گذاریابی · بدون نیاز به ایده",
+      "equity": "سهام در ازای سرمایه‌گذاری روز صفر",
+      "cost": "—",
+      "requirements": [
+        "حضور تمام‌وقت در دبی برای دوره‌ی residency",
+        "پذیرش < ۲٪"
+      ],
+      "blockers": [
+        "حضور فیزیکی در دبی",
+        "رقابت شدید (کمتر از ۲٪ پذیرش)"
+      ],
+      "link": "https://www.antler.co/apply",
+      "verified": "2026-08-29",
+      "angle": "Antler's model is co-founder matching — ideal for our biggest gap (solo technical founder needing a commercial co-founder). Day-0 investment solves runway; Dubai residency requires relocation commitment we must honestly state in the form.",
+      "last_checked": "2026-08-29"
+    },
+    {
+      "id": "1m1m",
+      "name": "1Mby1M Virtual Accelerator",
+      "org": "1Mby1M",
+      "country": "🌍 جهانی",
+      "priority": 3,
+      "status": "open",
+      "deadline": null,
+      "deadline_note": "بدون مهلت — هر زمان",
+      "format": "۱۰۰٪ مجازی",
+      "iran_access": "unclear",
+      "response_time": "چند روز — بدون cohort و صف",
+      "followup_days": 7,
+      "benefits": "منتورینگ مستمر، معرفی به سرمایه‌گذار — بدون سهام",
+      "equity": "صفر",
+      "cost": "۱٬۰۰۰ دلار در سال",
+      "requirements": [
+        "پرداخت کارت بین‌المللی"
+      ],
+      "blockers": [
+        "مانع پرداخت کارت"
+      ],
+      "link": "https://1m1m.sramanamitra.com/virtual-accelerator/",
+      "verified": "2026-08-18",
+      "angle": "No equity, no cohort queue — a pragmatic self-funded path: weekly strategy rounds with Sramana Mitra's network while we bootstrap on cloud credits instead of raising too early.",
+      "last_checked": "2026-08-29"
+    },
+    {
+      "id": "dfhq",
+      "name": "DFHQ Entrepreneur Academy",
+      "org": "Dubai Founders HQ × Antler",
+      "country": "🇦🇪 امارات",
+      "priority": 4,
+      "status": "closed",
+      "deadline": null,
+      "deadline_note": "مهلت ۲۴ اوت ۲۰۲۶ به‌پایان‌رسیده — رصد چرخه‌ی بعد",
+      "format": "هیبرید — جلسات اصلی در کمپس دبی",
+      "iran_access": "unclear",
+      "response_time": "بررسی و مصاحبه در طول اوت",
+      "followup_days": 21,
+      "benefits": "۶ هفته · رایگان، بدون سهام · مسیر سریع به Antler Residency",
+      "equity": "صفر",
+      "cost": "رایگان",
+      "requirements": [
+        "برای ساکنان دبی طراحی شده"
+      ],
+      "blockers": [
+        "مهلت بسته",
+        "ترجیح ساکنان دبی"
+      ],
+      "link": "https://airtable.com/apphfHMaBEr2dYAfx/paggzFhFJ2mw1Vp06/form",
+      "verified": "2026-08-18",
+      "angle": "Free 6-week fast-track into Antler. Closed this round — if we pursue the Antler Dubai path anyway, watch for the next DFHQ cycle and apply early (output: 10 customer interviews + investor deck).",
+      "last_checked": "2026-08-29"
+    },
+    {
+      "id": "cdl",
+      "name": "Creative Destruction Lab",
+      "org": "CDL · ۱۷ سایت در ۱۰ کشور",
+      "country": "🇨🇦 کانادا",
+      "priority": 4,
+      "status": "monitor",
+      "deadline": null,
+      "deadline_note": "دور بعدی — بهار ۲۰۲۷ (دور فعلی ۲۴ ژوئیه بسته شد)",
+      "format": "مجازی + ۳ روز جلسه‌ی حضوری",
+      "iran_access": "unclear",
+      "response_time": "~۳ هفته",
+      "followup_days": 21,
+      "benefits": "۹ ماه · صفر سهام، صفر هزینه · شبکه‌ای که ۶۰ میلیارد دلار ارزش ساخته",
+      "equity": "صفر",
+      "cost": "رایگان",
+      "requirements": [
+        "دیپ‌تک با بنیان‌گذار فنی"
+      ],
+      "blockers": [
+        "دور فعلی بسته"
+      ],
+      "link": "https://creativedestructionlab.com/application-triage/",
+      "verified": "2026-08-18",
+      "angle": "Best terms in the entire list — takes nothing, gives an objective-focused network. Our clinical-AI + transparent scoring engine qualifies as health-tech deep-tech; target the Spring 2027 round and use the months to publish outcome data.",
+      "last_checked": "2026-08-29"
+    },
+    {
+      "id": "canada-suv",
+      "name": "Canadian Start-up Visa (SUV)",
+      "org": "IRCC",
+      "country": "🇨🇦 کانادا",
+      "priority": 4,
+      "status": "unavailable",
+      "deadline": null,
+      "deadline_note": "پذیرش جدید از ۱ ژانویه ۲۰۲۶ متوقف — سهمیه از ۲٬۰۰۰ به ۱٬۰۰۰ کاهش یافته؛ IRCC در حال طراحی جایگزین",
+      "format": "—",
+      "iran_access": "unclear",
+      "response_time": "—",
+      "followup_days": null,
+      "benefits": "اقامت دائم کانادا + مجوز کار ۳ ساله (در صورت بازگشت برنامه)",
+      "equity": "—",
+      "cost": "—",
+      "requirements": [
+        "—"
+      ],
+      "blockers": [
+        "برنامه متوقف است"
+      ],
+      "link": "https://www.canada.ca/en/immigration-refugees-citizenship/services/immigrate-canada/start-visa/eligibility.html",
+      "verified": "2026-08-18",
+      "angle": "Not actionable — kept in the tracker only to monitor IRCC's replacement program announcement.",
+      "last_checked": "2026-08-29"
+    }
+  ]
+}
