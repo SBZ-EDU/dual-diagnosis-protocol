@@ -230,10 +230,11 @@ BTN_TIP = "🎓 نکته امروز"
 BTN_SECTIONS = "📖 بخش‌های پروتکل"
 BTN_HELP = "❓ راهنما"
 BTN_TRAINING = "🎓 آموزش همراه"
+BTN_INVITE = "🔗 دعوت از دیگران"
 BTN_ROLE = "👤 نقش من"
 
 MAIN_KEYBOARD = ReplyKeyboardMarkup(
-    [[BTN_RISK, BTN_TIP], [BTN_SECTIONS, BTN_ROLE], [BTN_TRAINING, BTN_HELP]],
+    [[BTN_RISK, BTN_TIP], [BTN_SECTIONS, BTN_ROLE], [BTN_TRAINING, BTN_INVITE], [BTN_HELP]],
     resize_keyboard=True,
     input_field_placeholder="سؤال خود را فارسی بنویسید…",
 )
@@ -258,6 +259,7 @@ HELP_TEXT = (
     f"• {BTN_SECTIONS} → مرور بخش‌های پروتکل درمان\n"
     f"• {BTN_ROLE} / /role → انتخاب نقش (بیمار / همراه / متخصص)\n"
     f"• {BTN_TRAINING} / /training → دوره‌ی آموزش همراه با آزمون\n"
+    f"• {BTN_INVITE} / /invite → لینک دعوت اختصاصی با نقش شما\n"
     "• /history → روند امتیازهای پایش خطر شما\n"
     "• /about → درباره‌ی معماری ربات و منابع\n"
     "• /cancel → لغو ارزیابی در جریان\n\n"
@@ -384,6 +386,26 @@ async def cmd_channel_status(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # ---------- دستورها ----------
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = WELCOME + (f"\n\n📢 کانال اخبار و آموزش روزانه: {channel_link()}" if TELEGRAM_CHANNEL_ID else "")
+    # لینک دعوت: t.me/bot?start=<rolecode>_<inviter_id> → نقش پیشنهادی معرف
+    if context.args:
+        m = re.match(r"^(pat|fam|doc)_(\d+)$", context.args[0])
+        if m:
+            suggested = REF_ROLE_BY_CODE[m.group(1)]
+            inviter_id = int(m.group(2))
+            if inviter_id != update.effective_user.id:
+                context.user_data.setdefault("invited_by", inviter_id)
+                stats = context.bot_data.setdefault("invites", {})
+                if not context.user_data.get("invited_counted"):
+                    stats[str(inviter_id)] = stats.get(str(inviter_id), 0) + 1
+                    context.user_data["invited_counted"] = True
+                if not context.user_data.get("role_explicit"):
+                    context.user_data["role"] = suggested
+            sug_label = ROLE_OPTIONS[suggested][0]
+            cur_label = ROLE_OPTIONS[get_role(context)][0]
+            text += (
+                f"\n\n🔗 شما با لینک دعوت یک *{sug_label}* وارد شدید.\n"
+                f"نقش فعلی شما: *{cur_label}*\n"
+                "اگر نقش درست نیست، هر زمانی با /role می‌توانید تغییرش دهید.")
     await update.effective_message.reply_text(text, parse_mode="Markdown",
                                               reply_markup=MAIN_KEYBOARD)
 
@@ -486,6 +508,8 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await cmd_role(update, context)
     if text == BTN_TRAINING:
         return await cmd_training(update, context)
+    if text == BTN_INVITE:
+        return await cmd_invite(update, context)
     if text == BTN_HELP:
         return await cmd_help(update, context)
     await answer_question(update, context, text)
@@ -629,12 +653,39 @@ async def on_role_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.answer("گزینه نامعتبر است.")
         return
     context.user_data["role"] = key
+    context.user_data["role_explicit"] = True
     label, desc = ROLE_OPTIONS[key]
     await q.answer("ثبت شد ✅")
     if q.message is not None:
         await q.message.reply_text(
-            f"✅ نقش شما: *{label}*\n{desc}\n\nاز این پس پاسخ‌ها برای همین نقش تنظیم می‌شود.",
+            f"✅ نقش شما: *{label}*\n{desc}\n\nاز این پس پاسخ‌ها برای همین نقش تنظیم می‌شود.\n🔗 با /invite می‌توانید لینک دعوت با همین نقش جدید بسازید.",
             parse_mode="Markdown")
+
+
+# ---------- دعوت دیگران با نقش (لینک اختصاصی) ----------
+ROLE_REF_CODES = {"patient": "pat", "family": "fam", "doctor": "doc"}
+REF_ROLE_BY_CODE = {v: k for k, v in ROLE_REF_CODES.items()}
+
+
+async def cmd_invite(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    role = get_role(context)
+    payload = f"{ROLE_REF_CODES[role]}_{uid}"
+    link = f"https://t.me/{context.bot.username}?start={payload}"
+    label = ROLE_OPTIONS[role][0]
+    joined = context.bot_data.get("invites", {}).get(str(uid), 0)
+    await send_long(update, (
+        "🔗 *لینک دعوت اختصاصی شما*\n\n"
+        f"نقش شما: *{label}*\n\n"
+        "این لینک را برای افرادِ همین حوزه‌ی خودتان بفرستید (مثلاً همراهِ خانواده برای دیگر "
+        "اعضای خانواده‌ها، یا متخصص برای همکاران). هرکس با این لینک ربات را استارت کند، "
+        "نقش شما به‌عنوان *نقش پیشنهادی* برایش ثبت می‌شود و پاسخ‌های ربات از همان ابتدا "
+        "متناسب با همان نقش خواهد بود.\n\n"
+        "💡 اگر کسی نقش پیشنهادی را نخواست، با دستور /role هر زمانی می‌تواند تغییرش دهد.\n"
+        f"👥 تاکنون {joined} نفر با لینک شما پیوسته‌اند."),
+        parse_mode="Markdown")
+    # لینک به‌صورت متن ساده تا زیرخط‌های نام ربات Markdown را نشکند و کلیک‌پذیر بماند
+    await update.effective_message.reply_text(link)
 
 
 # ---------- پایش خطر ----------
@@ -796,6 +847,7 @@ async def _post_init(app: Application) -> None:
         BotCommand("sections", "بخش‌های پروتکل درمان"),
         BotCommand("role", "نقش شما: بیمار / همراه / متخصص"),
         BotCommand("training", "دوره‌ی آموزش همراه + آزمون"),
+        BotCommand("invite", "لینک دعوت اختصاصی با نقش شما"),
         BotCommand("history", "روند پایش‌های قبلی شما"),
         BotCommand("about", "درباره‌ی ربات و منابع"),
         BotCommand("cancel", "لغو ارزیابی در جریان"),
@@ -833,6 +885,7 @@ def main():
     app.add_handler(CallbackQueryHandler(on_role_button, pattern=r"^role:(patient|family|doctor)$"))
     app.add_handler(CallbackQueryHandler(on_section_button, pattern=r"^sec:\d+$"))
     app.add_handler(CommandHandler("training", cmd_training))
+    app.add_handler(CommandHandler("invite", cmd_invite))
     app.add_handler(CallbackQueryHandler(on_train_module, pattern=r"^train:[a-z-]+$"))
     app.add_handler(CallbackQueryHandler(on_train_answer, pattern=r"^tq:[a-z-]+:\d+:\d+$"))
     app.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND, on_message))
