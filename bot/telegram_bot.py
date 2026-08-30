@@ -4,8 +4,8 @@
 معماری:
   • بخش اصلی (این مخزن): رابط، منوی دکمه‌ای، پایش خطر، نکته‌های آموزشی،
     متن کامل پروتکل و جست‌وجوی آفلاین در آن.
-  • بخش هوش مصنوعی (مخزن dual-diagnosis-rag + ورکر کلودفلر): پاسخ‌های
-    گفت‌وگویی تولیدشده از مقالات و راهنماها از طریق AI_API_URL.
+  • بخش هوش مصنوعی (هاست مستقل دلخواه + ارزیاب محلی): پاسخ‌های
+    گفت‌وگویی تولیدشده از مقالات و راهنماها از طریق AI_HOST_URL (سازگار با OpenAI).
 
 اجرا (بدون هیچ وابستگی سنگین — فقط python-telegram-bot):
     pip install -r bot/requirements.txt
@@ -22,6 +22,8 @@ import os
 import re
 import time
 import urllib.request
+import store
+from scenarios import local_eval
 from datetime import datetime
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -46,7 +48,15 @@ def _load_dotenv(path: str = os.path.join(os.path.dirname(__file__), "..", ".env
 _load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-AI_API_URL = os.getenv("AI_API_URL", "https://dual-diagnosis-clinical-hub.elasa2next.workers.dev/api/chat")
+# --- هاست دستیار هوش مصنوعی: مستقل از کلودفلر، سازگار با OpenAI ---
+# مثال‌ها: https://api.groq.com/openai/v1 | https://router.huggingface.co/v1 | https://openrouter.ai/api/v1
+AI_HOST_URL = os.getenv("AI_HOST_URL", "").strip().rstrip("/")
+AI_HOST_KEY = os.getenv("AI_HOST_KEY", "").strip()
+AI_HOST_MODEL = os.getenv("AI_HOST_MODEL", "").strip()
+AI_TIMEOUT = int(os.getenv("AI_TIMEOUT", "20"))
+# هاست قبلی (ورکر کلودفلر) فقط پشتیبانِ اختیاری است — پیش‌فرض خاموش (AI_CF_FALLBACK=1)
+AI_CF_URL = os.getenv("AI_API_URL", "").strip()
+AI_CF_FALLBACK = os.getenv("AI_CF_FALLBACK", "0") == "1"
 TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID", "").strip()
 CHANNEL_POST_COOLDOWN_S = float(os.getenv("CHANNEL_POST_COOLDOWN_S", "600"))
 COOLDOWN_S = float(os.getenv("TELEGRAM_COOLDOWN_S", "4"))
@@ -252,21 +262,80 @@ def search_protocol(query: str, max_len: int = 900) -> dict | None:
         excerpt += "…"
     return {"title": best["title"], "text": excerpt.strip(), "matched": best_score}
 
+# ============================================================
+# ۴) بخش هوش مصنوعی: زنجیره‌ی هاست مستقل (بدون وابستگی به یک سرویس)
+# ============================================================
+AI_SYSTEM_PROMPT = (
+    "تو دستیار آموزشی بالینی به زبان فارسی هستی برای بیماران و همراهانِ تشخیص دوگانه "
+    "(سایکوز/اسکیزوفرنی + اختلال مصرف مواد). تو دستیار هستی، نه پزشک؛ هرگز خودت را پزشک "
+    "معرفی نکن و نسخه یا تغییر دوز نده. پاسخ را ساختارمند، دقیق و مختصر بده و عدم قطعیت را "
+    "صریح بگو. در وضعیت اورژانس اول به خدمات اورژانس (۱۱۵)، اورژانس اجتماعی (۱۲۳) یا "
+    "خط خودکشی (۱۴۸۰) ارجاع بده."
+)
 
-# ============================================================
-# ۴) بخش هوش مصنوعی: تماس با ورکر کلودفلر (مخزن dual-diagnosis-rag)
-# ============================================================
-def ask_ai(question: str, role: str = "patient") -> dict | None:
-    """پرسش را به دستیار هوش مصنوعی (ورکر کلودفلر) می‌فرستد."""
+ROLE_GUIDES = {
+    "patient": "برای بیمار با زبان ساده، امیدبخش و بدون دوز یا جزئیات حساس پاسخ بده.",
+    "family": "برای خانواده، اقدامات حمایتی، علائم هشدار و زمان تماس با پزشک را ساده توضیح بده؛ دوز نده.",
+    "doctor": "برای پزشک با زبان فنی، محدودیت شواهد و DOIها پاسخ بده؛ هرگز نسخه‌ی فردی نده.",
+    "admin": "فقط درباره‌ی عملکرد سامانه، داده و منابع پاسخ بده؛ توصیه‌ی درمانی نده.",
+}
+
+
+def _ask_openai_host(question: str, role: str) -> dict | None:
+    """تماس با هر هاست سازگار با OpenAI (Groq / HF Router / OpenRouter / سرور شخصی)."""
+    url = AI_HOST_URL
+    if not url.endswith("/chat/completions"):
+        url += "/chat/completions"
+    messages = [
+        {"role": "system", "content": AI_SYSTEM_PROMPT + " " + ROLE_GUIDES.get(role, "")},
+        {"role": "user", "content": question},
+    ]
+    body = json.dumps({"model": AI_HOST_MODEL, "messages": messages,
+                       "temperature": 0.3, "max_tokens": 600}).encode("utf-8")
+    headers = {"content-type": "application/json",
+               "user-agent": "dual-diagnosis-protocol-bot/1.0"}
+    if AI_HOST_KEY:
+        headers["authorization"] = "Bearer " + AI_HOST_KEY
+    req = urllib.request.Request(url, data=body, method="POST", headers=headers)
+    with urllib.request.urlopen(req, timeout=AI_TIMEOUT) as r:
+        data = json.loads(r.read().decode("utf-8"))
+    text = ((data.get("choices") or [{}])[0].get("message") or {}).get("content")
+    if text and text.strip():
+        return {"answer": text.strip(), "source": AI_HOST_MODEL or AI_HOST_URL}
+    return None
+
+
+def _ask_cf_worker(question: str, role: str) -> dict | None:
+    """هاست قبلی (ورکر کلودفلر) — فقط وقتی AI_CF_FALLBACK=1 فعال باشد."""
     body = json.dumps({"question": question, "role": role}).encode("utf-8")
     req = urllib.request.Request(
-        AI_API_URL, data=body, method="POST",
-        headers={"content-type": "application/json", "user-agent": "dual-diagnosis-protocol-bot/1.0"},
-    )
-    with urllib.request.urlopen(req, timeout=45) as r:
+        AI_CF_URL, data=body, method="POST",
+        headers={"content-type": "application/json",
+                 "user-agent": "dual-diagnosis-protocol-bot/1.0"})
+    with urllib.request.urlopen(req, timeout=AI_TIMEOUT) as r:
         data = json.loads(r.read().decode("utf-8"))
     if "answer" in data:
         return data
+    return None
+
+
+def ask_ai(question: str, role: str = "patient") -> dict | None:
+    """زنجیره‌ی هاست‌ها: هاست مستقل → (اختیاری) پشتیبان قبلی → None.
+
+    هرگز استثنا نمی‌اندازد؛ فراخواننده در نبود هاست از ارزیاب محلی/پروتکل استفاده می‌کند.
+    """
+    steps = []
+    if AI_HOST_URL:
+        steps.append(("independent-host", _ask_openai_host))
+    if AI_CF_FALLBACK and AI_CF_URL:
+        steps.append(("cf-worker", _ask_cf_worker))
+    for name, fn in steps:
+        try:
+            data = fn(question, role)
+            if data:
+                return data
+        except Exception as e:
+            log.warning("هاست هوش مصنوعی «%s» پاسخ نداد: %s", name, e)
     return None
 
 
@@ -298,7 +367,7 @@ WELCOME = (
     "من ربات *پروتکل درمان تشخیص دوگانه* هستم\n"
     "(سایکوز / اسکیزوفرنی + اختلال مصرف مواد + BPD ± ADHD).\n\n"
     "🏛 *بخش اصلی:* پروتکل کامل درمان، پایش خطر و آموزش — در همین ربات\n"
-    "🧠 *بخش هوش مصنوعی:* پاسخ‌های مقاله‌محور از دستیار کلودفلر\n\n"
+    "🧠 *بخش هوش مصنوعی:* پاسخ‌های آموزشی از دستیار هوشمندِ مستقل (هاست دلخواه)\n\n"
     "👤 با دکمه‌ی «نقش من» مشخص کنید *بیمار* هستید، *همراه خانواده* یا *متخصص* "
     "تا پاسخ‌ها متناسب شود.\n\n"
     "سؤال‌تان را بنویسید یا از دکمه‌های پایین صفحه استفاده کنید 👇\n\n"
@@ -333,7 +402,7 @@ ABOUT_TEXT = (
     "۱) *بخش اصلی — پروتکل درمان* (این مخزن)\n"
     "پروتکل کامل بالینی، پایش خطر شفاف، آموزش‌های روزانه و جست‌وجوی آفلاین.\n\n"
     "۲) *بخش هوش مصنوعی — dual-diagnosis-rag*\n"
-    "بازیابی معنایی روی ۲۰۰+ مقاله و راهنماها + پاسخ‌گویی مدل زبانی (ورکر کلودفلر).\n\n"
+    "پاسخ‌گویی مدل زبانی روی هاست مستقل + آرشیو در پایگاه‌داده‌ی محلی SQLite.\n\n"
     "📚 منابع: NICE · APA · WFSBP · WHO · UNODC · وزارت بهداشت ایران\n"
     "⚕️ سایکوز / اسکیزوفرنی + اختلال مصرف مواد + BPD ± ADHD\n\n"
     "⚠️ جایگزین مشاوره پزشک نیست."
@@ -888,16 +957,13 @@ async def _evaluate_scenario(update: Update, context: ContextTypes.DEFAULT_TYPE,
             score = max(0, min(10, int(num)))
     lab.setdefault("results", {})[sc["id"]] = score
     lab["current"] = None
-    if not feedback:
-        feedback = ("⚠️ ارزیاب هوش مصنوعی موقتاً در دسترس نیست؛ "
-                    "نکته‌ی آموزشی این سناریو:\n\n" + sc["teach"])
-    # آرشیو پاسخ کاربر + تحلیل هوش مصنوعی
-    arch = context.user_data.setdefault("scenario_archive", [])
-    arch.append({"date": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                 "sid": sc["id"], "title": sc["title"],
-                 "answer": text[:200], "analysis": feedback[:400], "score": score})
-    del arch[:-50]
-    _record_level(context)
+    if score is None:
+        # ارزیاب محلی: هیچ هاست هوش مصنوعی پاسخ نداد
+        score, feedback = local_eval(sc, text)
+    # آرشیو در پایگاه‌داده‌ی محلی SQLite — بدون هیچ سرویس ابری
+    store.add_scenario(update.effective_user.id, sc["id"], sc["title"],
+                       text[:200], feedback[:400], score)
+    _record_level(update, context)
     await send_long(update, f"📋 ارزیابی واکنش شما به «{sc['title']}»:\n\n" + feedback)
     # پیشنهاد آموزشِ همین موقعیت (فقط ماژول‌های نگذرانده)
     prog = context.user_data.get("academy") or {}
@@ -951,7 +1017,8 @@ async def on_scfree(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def on_scwipe(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """حق حذف آرشیو (هم‌راستا با روحیه‌ی 42 CFR Part 2)."""
     q = update.callback_query
-    removed = len(context.user_data.pop("scenario_archive", []) or [])
+    removed = store.wipe(update.effective_user.id)
+    context.user_data.pop("scenario_archive", None)
     context.user_data.pop("level_history", None)
     lab = context.user_data.get("scenario_lab") or {}
     lab.pop("results", None)
@@ -993,9 +1060,9 @@ async def _scenario_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines.append(f"سناریوهای پاسخ‌داده: {len(asked)}")
     if avg is not None:
         lines.append(f"میانگین نمره: {avg} از ۱۰")
-    pts = _record_level(context)
+    pts = _record_level(update, context)
     lines.append(f"🏆 سطح همراهی: {_level_of(pts)} ({pts} نمره)")
-    arch = context.user_data.get("scenario_archive") or []
+    arch = store.scenarios(update.effective_user.id)
     if arch:
         lines.append(f"🗂 آرشیو پاسخ‌ها: {len(arch)} ردیف — /archive")
     if weak:
@@ -1086,14 +1153,15 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines.append(f"📈 پایش خطر: {len(hist)} ثبت | آخرین: {hist[-1]['score']} از ۷۶ ({hist[-1].get('level', '')})")
     if cost:
         lines.append(f"💰 هزینه‌ی مراقبت: {cost.get('tier', '—')} (امتیاز {cost.get('score', '—')} از ۱۲)")
-    pts = _record_level(context)
-    hist_lv = context.user_data.get("level_history") or []
+    pts = _record_level(update, context)
+    hist_lv = store.levels(update.effective_user.id)
     first = hist_lv[0]["pts"] if hist_lv else pts
     growth = pts - first
     lines.append(f"🏆 سطح همراهی: {_level_of(pts)} — {pts} نمره"
-                 + (f" (رشد از ابتدای مسیر: ''{' + ' if growth > 0 else ' '}{growth})" if growth else ""))
-    if context.user_data.get("scenario_archive"):
-        lines.append(f"🗂 آرشیو سناریوها: {len(context.user_data['scenario_archive'])} پاسخ ثبت‌شده (/archive)")
+                 + (f" (رشد از ابتدای مسیر: {growth:+d})" if growth else ""))
+    arch_n = len(store.scenarios(update.effective_user.id))
+    if arch_n:
+        lines.append(f"🗂 آرشیو سناریوها: {arch_n} پاسخ ثبت‌شده (/archive)")
     recs = []
     if path == "alone":
         recs.append("🔹 وصل‌کردن متخصص/کلینیک — اولویت اول برای مسیرِ تنها")
@@ -1115,14 +1183,14 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ---------- سطح همراهی و آرشیو ----------
-def _companion_points(context: ContextTypes.DEFAULT_TYPE) -> int:
+def _companion_points(uid: int, context: ContextTypes.DEFAULT_TYPE) -> int:
     """نمره‌ی ترکیبی: ماژول‌ها + میانگین سناریوها + تعداد پاسخ‌ها (حداکثر ~۱۰۰)."""
     prog = context.user_data.get("academy") or {}
     mods = sum(1 for m in CAREGIVER_MODULES if m["id"] in prog)
     lab = context.user_data.get("scenario_lab") or {}
     results = [v for v in (lab.get("results") or {}).values() if v is not None]
     avg = sum(results) / len(results) if results else 0.0
-    arch = context.user_data.get("scenario_archive") or []
+    arch = store.scenarios(uid)
     return round(mods * 9 + avg * 3.5 + min(len(arch), 8) * 1.5)
 
 
@@ -1136,25 +1204,23 @@ def _level_of(pts: int) -> str:
     return "🌱 مبتدی"
 
 
-def _record_level(context: ContextTypes.DEFAULT_TYPE) -> int:
-    """نمره‌ی فعلی را در تاریخچه‌ی سطح ثبت می‌کند (برای نمایش رشد)."""
-    pts = _companion_points(context)
-    hist = context.user_data.setdefault("level_history", [])
-    hist.append({"date": datetime.now().strftime("%Y-%m-%d"), "pts": pts})
-    del hist[:-30]
+def _record_level(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """نمره‌ی فعلی را در تاریخچه‌ی سطح (پایگاه‌داده‌ی محلی SQLite) ثبت می‌کند."""
+    pts = _companion_points(update.effective_user.id, context)
+    store.add_level(update.effective_user.id, pts)
     return pts
 
 
 async def cmd_archive(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """آرشیو پاسخ‌های کاربر و تحلیل هوش مصنوعی + روند رشد."""
-    arch = context.user_data.get("scenario_archive") or []
+    arch = store.scenarios(update.effective_user.id)
     if not arch:
         await update.effective_message.reply_text(
             "🗂 هنوز پاسخی آرشیو نشده است. با /scenario شروع کنید — هر پاسخ و تحلیلش "
             "به‌صورت خودکار اینجا نگه داشته می‌شود.", reply_markup=MAIN_KEYBOARD)
         return
-    pts = _record_level(context)
-    hist = context.user_data.get("level_history") or []
+    pts = _record_level(update, context)
+    hist = store.levels(update.effective_user.id)
     first = hist[0]["pts"] if hist else pts
     delta = pts - first
     scores = [e["score"] for e in arch if e.get("score") is not None]
@@ -1353,6 +1419,11 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------- راه‌اندازی ----------
 async def _post_init(app: Application) -> None:
+    # پایگاه‌داده‌ی محلی SQLite + مهاجرت یک‌باره‌ی داده‌های قدیمی pickle
+    store.init()
+    moved = store.migrate(app.user_data)
+    if moved:
+        log.info("مهاجرت آرشیو pickle به SQLite: %d ردیف.", moved)
     commands = [
         BotCommand("start", "شروع و معرفی ربات"),
         BotCommand("help", "راهنما"),
@@ -1379,7 +1450,7 @@ async def _post_init(app: Application) -> None:
 
 
 def main():
-    # ماندگاری داده‌ها (نقش کاربر و سابقه‌ی پایش) بین اجراها — بدون پایگاه‌داده
+    # ماندگاری داده‌ها (نقش کاربر و سابقه‌ی پایش) بین اجراها — با پایگاه‌داده‌ی محلی SQLite
     data_dir = os.path.join(BOT_DIR, "..", "data")
     os.makedirs(data_dir, exist_ok=True)
     persistence = PicklePersistence(filepath=os.path.join(data_dir, "bot_data.pkl"))
@@ -1432,7 +1503,8 @@ def main():
             log.info("پست روزانه‌ی کانال (%s) هر روز ساعت ۹ (تهران) زمان‌بندی شد.", TELEGRAM_CHANNEL_ID)
         else:
             log.warning("job_queue در دسترس نیست (python-telegram-bot[job-queue])؛ پست روزانه فعال نشد.")
-    log.info("ربات پروتکل (بخش اصلی) + دستیار هوش مصنوعی (%s) راه‌اندازی می‌شود...", AI_API_URL)
+    host_desc = AI_HOST_URL + (" · مدل: " + AI_HOST_MODEL if AI_HOST_MODEL else "") if AI_HOST_URL else "حالت محلی — بدون هاست بیرونی"
+    log.info("ربات پروتکل (بخش اصلی) + دستیار هوش مصنوعی (%s) راه‌اندازی می‌شود...", host_desc)
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
