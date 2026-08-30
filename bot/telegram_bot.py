@@ -361,7 +361,47 @@ def _norm_fa(s: str) -> str:
     return s.replace("ي", "ی").replace("ك", "ک").replace(chr(0x200C), " ").lower()
 
 
+# وکتورهای معنایی از پیش محاسبه‌شده (bge-m3 محلی)
+_VECS = None
+try:
+    import numpy as _np
+    _z = _np.load(os.path.join(BOT_DIR, "..", "data", "vectors_semantic.npz"))
+    _v = _z["vectors"].astype("float32")
+    if len(_v) == len(CORPUS):
+        _VECS = _v
+except Exception:
+    _VECS = None
+
+
+def _embed_query(query: str):
+    """embedding پرسش با bge-m3 روی Ollama محلی (در صورت در دسترس بودن)."""
+    try:
+        body = json.dumps({"model": "bge-m3", "input": [query[:1000]]}).encode()
+        req = urllib.request.Request("http://127.0.0.1:11434/api/embed",
+                                     data=body, method="POST",
+                                     headers={"content-type": "application/json"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            e = json.loads(r.read().decode())["embeddings"][0]
+        v = _np.array(e, dtype="float32")
+        n = float(_np.linalg.norm(v))
+        return v / n if n > 0 else None
+    except Exception:
+        return None
+
+
 def search_corpus(query: str, k: int = 3) -> list:
+    """جست‌وجوی معنایی محلی (bge-m3) با fallback جست‌وجوی IDF کلیدواژه‌ای."""
+    if _VECS is not None:
+        v = _embed_query(query)
+        if v is not None:
+            sims = _VECS @ v
+            idx = _np.argsort(-sims)[:k]
+            if float(sims[int(idx[0])]) > 0.35:
+                return [CORPUS[int(i)] for i in idx]
+    return _search_corpus_idf(query, k)
+
+
+def _search_corpus_idf(query: str, k: int = 3) -> list:
     """جست‌وجوی IDF-وزن‌دار در پایگاه دانش محلی (فارسی + انگلیسی)."""
     if not CORPUS:
         return []
@@ -1020,19 +1060,26 @@ async def _evaluate_scenario(update: Update, context: ContextTypes.DEFAULT_TYPE,
         log.warning("ارزیابی سناریو با هوش مصنوعی ممکن نشد (%s).", e)
     finally:
         typing.cancel()
-    score = None
+    ai_score = None
     feedback = ""
     if data and data.get("answer"):
         feedback = data["answer"].strip()
         m = re.search(r"نمره[^0-9۰-۹]{0,15}?([0-9۰-۹]+)", feedback)
         if m:
             num = m.group(1).translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789"))
-            score = max(0, min(10, int(num)))
+            ai_score = max(0, min(10, int(num)))
+    # امتیاز نهایی: بیشینه‌ی ارزیاب محلی (کالیبره و قابل‌اتکا) و فهم متنِ AI
+    local_score, local_fb = local_eval(sc, text)
+    score = max(local_score, ai_score) if ai_score is not None else local_score
+    if not feedback:
+        feedback = local_fb
+    elif "نمره" not in feedback:
+        feedback = f"نمره: {score} از ۱۰\n\n" + feedback
+    elif ai_score is None or ai_score != score:
+        feedback = re.sub(r"نمره\s*[:：]?\s*[0-9۰-۹]+(?:\s*از\s*[0-9۰-۹]+)?",
+                          f"نمره: {score} از ۱۰", feedback, count=1)
     lab.setdefault("results", {})[sc["id"]] = score
     lab["current"] = None
-    if score is None:
-        # ارزیاب محلی: هیچ هاست هوش مصنوعی پاسخ نداد
-        score, feedback = local_eval(sc, text)
     # آرشیو در پایگاه‌داده‌ی محلی SQLite — بدون هیچ سرویس ابری
     store.add_scenario(update.effective_user.id, sc["id"], sc["title"],
                        text[:200], feedback[:400], score)

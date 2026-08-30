@@ -64,7 +64,21 @@ jobs:
             sleep 5
           fi
           ollama pull qwen2.5:7b
+          ollama pull bge-m3
           ollama list
+
+      - name: Build semantic vectors (one-time, bge-m3)
+        run: |
+          if [ -f data/vectors_semantic.npz ]; then
+            echo "semantic vectors restored from private data repo."
+          else
+            python3 bot/embed_corpus.py
+            cp -f data/vectors_semantic.npz /tmp/datarepo/data/
+            git -C /tmp/datarepo add -A
+            git -C /tmp/datarepo -c user.name="bot-sync" -c user.email="bot@users.noreply.github.com" \
+              commit -qm "semantic vectors [skip ci]" || true
+            git -C /tmp/datarepo push -q origin main || true
+          fi
 
       - name: AI smoke test on the real host
         run: |
@@ -78,19 +92,33 @@ jobs:
           rag_q = "اگر بیمار دوباره مصرف کرد، خانواده چه کند؟"
           rag_prompt, srcs = tb.build_grounded_question(rag_q)
           sys_prompt = tb.AI_SYSTEM_PROMPT + " " + tb.ROLE_GUIDES["family"]
-          tests = [("scenario-eval", [{"role": "user", "content": eval_prompt}]),
-                   ("family-rag", [{"role": "system", "content": sys_prompt},
-                                   {"role": "user", "content": rag_prompt}])]
+          from scenarios import local_eval
+          lscore, _ = local_eval(sc, "فوراً ۱۱۵ می‌گیرم، او را روی پهلو می‌خوابانم و کنارش می‌مانم.")
           out = []
-          for label, messages in tests:
-              body = json.dumps({"model": "qwen2.5:7b", "messages": messages,
-                                 "max_tokens": 500, "temperature": 0.3}).encode()
-              req = urllib.request.Request("http://127.0.0.1:11434/v1/chat/completions",
-                                           data=body, method="POST",
-                                           headers={"content-type": "application/json"})
-              ans = json.loads(urllib.request.urlopen(req, timeout=600).read())["choices"][0]["message"]["content"]
-              out.append(f"===== {label} =====\n{ans}")
-              print(f"{label}: {ans[:120]}")
+          # ۱) ارزیابی سناریو با AI
+          body = json.dumps({"model": "qwen2.5:7b",
+                             "messages": [{"role": "user", "content": eval_prompt}],
+                             "max_tokens": 400, "temperature": 0.3}).encode()
+          req = urllib.request.Request("http://127.0.0.1:11434/v1/chat/completions",
+                                       data=body, method="POST",
+                                       headers={"content-type": "application/json"})
+          ans = json.loads(urllib.request.urlopen(req, timeout=600).read())["choices"][0]["message"]["content"]
+          import re as _re
+          m = _re.search(r"نمره[^0-9۰-۹]{0,15}?([0-9۰-۹]+)", ans)
+          ai = int(m.group(1).translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789"))) if m else None
+          out.append(f"===== scenario-eval =====\nAI raw:\n{ans}\n\nlocal={lscore} ai={ai} → نهایی={max(lscore, ai) if ai is not None else lscore}")
+          # ۲) پاسخ RAG مستند
+          body = json.dumps({"model": "qwen2.5:7b",
+                             "messages": [{"role": "system", "content": sys_prompt},
+                                          {"role": "user", "content": rag_prompt}],
+                             "max_tokens": 500, "temperature": 0.3}).encode()
+          req = urllib.request.Request("http://127.0.0.1:11434/v1/chat/completions",
+                                       data=body, method="POST",
+                                       headers={"content-type": "application/json"})
+          ans2 = json.loads(urllib.request.urlopen(req, timeout=600).read())["choices"][0]["message"]["content"]
+          mode = "semantic" if tb._VECS is not None else "idf"
+          out.append(f"===== family-rag (retrieval={mode}) =====\n{ans2}\n\nمنابع بازیابی‌شده: {srcs}")
+          print("\n".join(out)[:400])
           open("ai-smoke.txt", "w", encoding="utf-8").write("\n\n".join(out))
           EOF
           cp ai-smoke.txt /tmp/datarepo/ 2>/dev/null || true
