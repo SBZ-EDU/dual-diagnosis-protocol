@@ -1,0 +1,68 @@
+name: telegram-bot-host
+
+# هاست ۲۴/۷ ربات روی GitHub Actions — مستقل از هر سرویس دیگر (نه کلودفلر)
+# هر اجرا ~۵ساعت۴۸دقیقه می‌ماند؛ cron هر ۵ دقیقه یک اجرای جایگزین آماده نگه می‌دارد.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/5 * * * *"
+
+concurrency:
+  group: telegram-bot-host
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+      DATA_REPO_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore local database from private data repo
+        run: |
+          mkdir -p data
+          rm -rf /tmp/datarepo
+          if git clone -q --depth 1 "https://x-access-token:${DATA_REPO_TOKEN}@github.com/SBZ-EDU/dual-diagnosis-bot-data.git" /tmp/datarepo 2>/dev/null; then
+            cp -f /tmp/datarepo/data/* data/ 2>/dev/null || true
+            echo "Previous bot data restored."
+          else
+            git init -q /tmp/datarepo
+            git -C /tmp/datarepo checkout -q -b main
+            git -C /tmp/datarepo remote add origin "https://x-access-token:${DATA_REPO_TOKEN}@github.com/SBZ-EDU/dual-diagnosis-bot-data.git"
+            echo "Fresh start — no previous data."
+          fi
+          mkdir -p /tmp/datarepo/data
+
+      - name: Heartbeat (keeps scheduled workflow enabled)
+        run: |
+          date -u +%FT%TZ > .heartbeat
+          git add -f .heartbeat
+          git -c user.name="bot-heartbeat" -c user.email="bot@users.noreply.github.com" \
+            commit -qm "heartbeat [skip ci]" || true
+          git push -q origin HEAD:heartbeat --force || true
+          git reset -q --hard origin/master
+
+      - name: Install dependencies
+        run: pip install -q -r bot/requirements.txt
+
+      - name: Run bot (~5h48m) with periodic data sync
+        run: |
+          sync_data() {
+            cp -f data/bot.db data/bot_data.pkl /tmp/datarepo/data/ 2>/dev/null || return 0
+            git -C /tmp/datarepo add -A
+            git -C /tmp/datarepo -c user.name="bot-sync" -c user.email="bot@users.noreply.github.com" \
+              commit -qm "data sync $(date -u +%H:%M) [skip ci]" || return 0
+            git -C /tmp/datarepo push -q origin main || true
+          }
+          ( while true; do sleep 300; sync_data; done ) &
+          SYNC_PID=$!
+          timeout --signal=INT --kill-after=90 348m python3 bot/telegram_bot.py
+          sync_data
+          kill $SYNC_PID 2>/dev/null || true
