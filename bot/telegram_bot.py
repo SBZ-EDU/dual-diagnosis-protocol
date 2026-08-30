@@ -1618,10 +1618,12 @@ def _register_daily_jobs(app, uid: int) -> None:
     tz = zoneinfo.ZoneInfo("Asia/Tehran")
     if not app.job_queue.get_jobs_by_name(f"daily_m_{uid}"):
         app.job_queue.run_daily(_job_daily_morning, time=dtime(9, 0, tzinfo=tz),
-                                name=f"daily_m_{uid}", data=uid)
+                                name=f"daily_m_{uid}", data=uid,
+                                user_id=uid, chat_id=uid)
     if not app.job_queue.get_jobs_by_name(f"daily_e_{uid}"):
         app.job_queue.run_daily(_job_daily_evening, time=dtime(21, 0, tzinfo=tz),
-                                name=f"daily_e_{uid}", data=uid)
+                                name=f"daily_e_{uid}", data=uid,
+                                user_id=uid, chat_id=uid)
 
 
 def _enable_daily(app, uid: int) -> bool:
@@ -1666,8 +1668,41 @@ async def _job_daily_morning(context: ContextTypes.DEFAULT_TYPE) -> None:
         log.warning("چک‌ین صبح برای %s ناموفق: %s", uid, e)
 
 
+def _daily_snapshot(context: ContextTypes.DEFAULT_TYPE) -> str:
+    """خلاصه‌ی متنی چک‌ین‌های ۳ روز اخیر برای پیام شخصی‌سازی‌شده‌ی هوش مصنوعی."""
+    try:
+        dlog = context.user_data.get("daily_log") or {}
+    except Exception:
+        return ""
+    parts = []
+    for i in range(3):
+        d = datetime.now() - timedelta(days=i)
+        e = dlog.get(d.strftime("%Y%m%d")) or {}
+        if "m" in e or "e" in e:
+            m = ["خوب", "متوسط", "بد"][e["m"]] if "m" in e else "—"
+            u = ["کم", "متوسط", "زیاد"][e["e"]] if "e" in e else "—"
+            parts.append(f"روز {-i if i else 'امروز'}: حال {m}، وسوسه {u}")
+    return "؛ ".join(parts)
+
+
+def _ai_daily_message(snapshot: str) -> str | None:
+    """پیام کوتاه شخصی‌سازی‌شده با هوش مصنوعی محلی (در نخ جدا اجرا شود)."""
+    if not snapshot:
+        return None
+    try:
+        data = ask_ai(
+            "برای یک بیمار در مسیر بهبودیِ تشخیص دوگانه، یک پیام کوتاه شبانه بنویس: ۲ تا ۳ جمله، "
+            "صمیمی، امیدبخش و مشخص برای وضعیت او — بدون توصیه‌ی دارویی و بدون تکرارِ کلیشه. "
+            "وضعیت چک‌ین‌های اخیر او: " + snapshot, "patient")
+        if data and data.get("answer"):
+            return _shorten_answer(data["answer"].strip(), 400)
+    except Exception:
+        return None
+    return None
+
+
 async def _job_daily_evening(context: ContextTypes.DEFAULT_TYPE) -> None:
-    """شب (۲۱ تهران): چک وسوسه + پیام انگیزشی."""
+    """شب (۲۱ تهران): چک وسوسه + پیام شخصی (هوش مصنوعی، در غیر این‌صورت ایستا)."""
     uid = context.job.data
     text = ("🌙 *شب بخیر*\n\n"
             "قبل از خواب، یک چک صادقانه با خودت:\n"
@@ -1676,8 +1711,10 @@ async def _job_daily_evening(context: ContextTypes.DEFAULT_TYPE) -> None:
                                 for i, lbl in enumerate(URGE_LABELS)]])
     try:
         await context.bot.send_message(uid, text, parse_mode="Markdown", reply_markup=kb)
-        mot = DAILY_MOTIVATION[(time.localtime().tm_yday + 5) % len(DAILY_MOTIVATION)]
-        await context.bot.send_message(uid, f"🌟 {mot}\n\n💤 خوابِ منظم، سپرِ فردایت است.")
+        mot = await asyncio.to_thread(
+            _ai_daily_message, _daily_snapshot(context)) or (
+            "🌟 " + DAILY_MOTIVATION[(time.localtime().tm_yday + 5) % len(DAILY_MOTIVATION)])
+        await context.bot.send_message(uid, f"{mot}\n\n💤 خوابِ منظم، سپرِ فردایت است.")
     except Exception as e:
         log.warning("چک‌ین شب برای %s ناموفق: %s", uid, e)
 
@@ -1696,6 +1733,19 @@ async def on_daily_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
     entry[kind] = val
     entry["ts"] = datetime.now().isoformat(timespec="minutes")
     await q.answer("ثبت شد ✅")
+    # هشدار پیگیری همراه: وسوسه‌ی زیاد، یا حالِ بدِ چندروزه
+    try:
+        if kind == "e" and val == 2:
+            await _notify_companion_if_critical(context, update.effective_user.id, "وسوسه‌ی زیاد")
+        elif kind == "m" and val == 2:
+            bad_days = sum(1 for i in range(3)
+                           if (log.get((datetime.now() - timedelta(days=i)).strftime("%Y%m%d"), {})
+                               or {}).get("m") == 2)
+            if bad_days >= 2:
+                await _notify_companion_if_critical(context, update.effective_user.id,
+                                                    "حالِ بدِ چندروزه")
+    except Exception as e:
+        log.warning("ارزیابی هشدار پیگیری ناموفق: %s", e)
     streak = _daily_streak(context)
     if kind == "m":
         if val == 0:
@@ -1735,6 +1785,31 @@ async def on_daily_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.message.reply_text(reply)
 
 
+async def _notify_companion_if_critical(context: ContextTypes.DEFAULT_TYPE,
+                                        patient_uid: int, reason: str) -> None:
+    """در روزهای سختِ پیوسته، به همراهِ متصل (اگر لینک دعوت او با بیمار ثبت شده) هشدارِ پیگیری بده.
+    جزئیات پاسخ‌های بیمار هرگز فاش نمی‌شود — فقط هشدارِ «پیگیری کن»."""
+    try:
+        inviter = context.user_data.get("invited_by")
+        if not inviter or inviter == patient_uid:
+            return
+        last = context.user_data.get("_companion_alert_ts", 0.0)
+        if time.time() - last < 48 * 3600:  # حداکثر یک هشدار در ۲ روز
+            return
+        context.user_data["_companion_alert_ts"] = time.time()
+        await context.bot.send_message(inviter, (
+            "🤍 *پیگیری همراه*\n\n"
+            f"چک‌ین‌های روزهای اخیرِ عزیزی که با لینک شما وارد ربات شده، سخت‌تر از قبل بوده است ({reason}).\n"
+            "همین امروز سه کار می‌توانید بکنید:\n"
+            "• یک تماس یا پیام کوتاه — بدون نصیحت، فقط «حالت چطوره؟»\n"
+            "• اگر از دارو یا خوابش حرف زد، با آرامش گوش بده و به تیم درمان‌اش اطلاع بده\n"
+            "• اگر صحبت از آسیب یا ناامیدی بود، او را تنها نگذار: اورژانس ۱۱۵ · ۱۲۳ · خط ۱۴۸۰\n\n"
+            "🔒 جزئیات پاسخ‌های او محفوظ است؛ این پیام فقط هشدارِ پیگیری است."), parse_mode="Markdown")
+        log.info("هشدار پیگیری همراه برای بیمار %s ارسال شد.", patient_uid)
+    except Exception as e:
+        log.warning("هشدار پیگیری همراه ناموفق: %s", e)
+
+
 async def cmd_daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """مدیریت چک‌ین روزانه: روشن/خاموش + گزارش روزها."""
     app = context.application
@@ -1764,8 +1839,10 @@ async def cmd_daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "☀️ *چک‌ین روزانه: خاموش است*\n\n"
             "با روشن‌کردنش، هر روز این دو پیام را می‌گیری:\n"
             "🕘 صبح ۹ — یادآور دارو + «حالت چطور است؟»\n"
-            "🌙 شب ۲۱ — چک وسوسه + یک پیام انگیزشی\n\n"
-            "پاسخ‌هایت فقط برای خودت ذخیره می‌شود؛ روزهای سخت را زودتر می‌بینیم و همان‌جا کنارت هستیم.",
+            "🌙 شب ۲۱ — چک وسوسه + یک پیام شخصی‌سازی‌شده (هوش مصنوعی)\n\n"
+            "پاسخ‌هایت فقط برای خودت ذخیره می‌شود. اگر چند روز پشت‌سرهم خیلی سخت شود و با لینکِ "
+            "کسی وارد شده باشی، فقط یک هشدارِ پیگیری (بدون هیچ جزئیاتی) به همان نفر می‌رود تا "
+            "کنارت بماند — و پیام شبانه‌ات برای وضعیت خودت شخصی می‌شود.",
             reply_markup=kb, parse_mode="Markdown")
 
 
