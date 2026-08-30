@@ -21,6 +21,7 @@ import logging
 import os
 import re
 import time
+import urllib.parse
 import urllib.request
 import store
 from scenarios import local_eval
@@ -493,9 +494,9 @@ def _post_with_meta(entry):
 
 
 def _render_channel_post(label: str, entry) -> str:
-    """قالب یکسان پست کانال: عنوان + متن + پرسش تعاملی + منبع + هشتگ‌ها."""
+    """قالب یکسان پست کانال: عنوان + متن + پرسش تعاملی + منبع + هشتگ‌ها (HTML)."""
     title, body, source, tags, question = _post_with_meta(entry)
-    text = f"{label} | *{title}*\n\n{body}"
+    text = f"{label} | <b>{title}</b>\n\n{body}"
     if question:
         text += f"\n\n💬 {question}"
     text += f"\n\n📖 منبع: {source}"
@@ -527,6 +528,90 @@ def news_post_of_day() -> str:
     return _render_channel_post("🔬 خبر علمی", NEWS_SERIES[(day // 6) % len(NEWS_SERIES)])
 
 
+# ---------- خبر خودکار از PubMed (E-utilities) ----------
+PUBMED_TERM = '("dual diagnosis"[tiab] OR (schizophrenia[tiab] AND "substance use"[tiab]))'
+_PUBMED_SEEN: set = set()
+
+
+def fetch_pubmed_recent(max_items: int = 5, window_days: int = 20) -> list:
+    """آخرین مقالات مرتبط از PubMed؛ خروجی: pmid/title/journal/url."""
+    base = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
+    q = urllib.parse.quote(PUBMED_TERM)
+
+    def _get(url: str) -> dict:
+        last_err = None
+        for attempt in range(3):  # retry روی محدودیت نرخ (429)
+            try:
+                req = urllib.request.Request(url, headers={
+                    "user-agent": "dual-diagnosis-protocol-bot/1.0 (educational)"})
+                with urllib.request.urlopen(req, timeout=15) as r:
+                    return json.load(r)
+            except urllib.error.HTTPError as e:
+                last_err = e
+                if e.code == 429:
+                    time.sleep(2.0 + attempt)  # احترام به سقف نرخ NCBI
+                    continue
+                raise
+        raise last_err or RuntimeError("PubMed fetch failed")
+
+    url = (f"{base}esearch.fcgi?db=pubmed&term={q}&datetype=edat"
+           f"&reldate={window_days}&retmax={max_items}&sort=date&retmode=json")
+    ids = _get(url)["esearchresult"]["idlist"]
+    ids = [i for i in ids if i not in _PUBMED_SEEN]
+    if not ids:
+        return []
+    time.sleep(0.6)  # فاصله بین دو فراخوانی E-utilities
+    url = f"{base}esummary.fcgi?db=pubmed&id={','.join(ids)}&retmode=json"
+    data = _get(url)["result"]
+    out = []
+    for pid in ids:
+        rec = data.get(pid) or {}
+        title = (rec.get("title") or "").strip().rstrip(".")
+        journal = (rec.get("fulljournalname") or rec.get("source") or "").strip()
+        if title and journal:
+            out.append({"pmid": pid, "title": title, "journal": journal,
+                        "url": f"https://pubmed.ncbi.nlm.nih.gov/{pid}/"})
+    return out
+
+
+def auto_news_post() -> str | None:
+    """پست خبری خودکار: مقاله‌ی تازه‌ی PubMed + خلاصه‌ی فارسی با هوش مصنوعی محلی + پرسش.
+    اگر واکشی یا خلاصه‌سازی ناموفق بود None برمی‌گرداند تا سری ایستا جایگزین شود."""
+    try:
+        items = fetch_pubmed_recent()
+        if not items:
+            return None
+        item = items[0]
+        _PUBMED_SEEN.add(item["pmid"])
+        summary = None
+        try:
+            data = ask_ai(
+                "عنوان مقاله‌ی پزشکی زیر را در حداکثر ۳ جمله‌ی ساده‌ی فارسی برای عموم خلاصه کن "
+                "(بدون اصطلاح فنی سنگین) و در خط آخر یک سؤال کوتاه گفت‌وگویی برای مخاطب عمومی بنویس:\n"
+                + item["title"], "family")
+            if data and data.get("answer"):
+                summary = data["answer"].strip()
+        except Exception:
+            summary = None
+        if not summary:
+            summary = (f"مطالعه‌ی تازه‌ای در {item['journal']} منتشر شده است.\n"
+                       f"💬 نظر شما درباره‌ی این موضوع چیست؟")
+        body = summary + f"\n\n🔎 عنوان اصلی: {item['title']}"
+        entry = (item["journal"], body, f"PubMed · PMID {item['pmid']}",
+                 ["مطالعه_جدید", "مجله_و_نشریه"], "")
+        text = _render_channel_post("🔬 خبر علمی (خودکار)", entry)
+        return text.replace("📖 منبع:",
+                            f'📄 <a href="{item["url"]}">متن کامل</a>\n📖 منبع:', 1)
+    except Exception as e:
+        log.warning("خبر خودکار PubMed ناموفق: %s", e)
+        return None
+
+
+def daily_news_post() -> str:
+    """خبر روز: اول تلاش برای خبر واقعیِ خودکار، سپس سری ایستا."""
+    return auto_news_post() or news_post_of_day()
+
+
 def work_post_of_day() -> str:
     day = time.localtime().tm_yday
     return _render_channel_post("💼 کار و درآمد", WORK_SERIES[(day // 6) % len(WORK_SERIES)])
@@ -544,15 +629,15 @@ def poll_of_day() -> tuple:
 
 
 def tags_directory() -> str:
-    """راهنمای هشتگ‌های کانال برای کاربران ربات و پست معرفی کانال."""
-    lines = ["🏷 *راهنمای هشتگ‌های کانال*", "",
+    """راهنمای هشتگ‌های کانال برای کاربران ربات و پست معرفی کانال (HTML)."""
+    lines = ["🏷 <b>راهنمای هشتگ‌های کانال</b>", "",
              "برای یافتن موضوعات، روی هشتگ‌ها ضربه بزنید یا در جست‌وجوی تلگرام بنویسید:", ""]
     for key in ("clinical", "roles", "academic", "work", "team"):
         label, tags = TAG_TAXONOMY[key]
-        lines.append(f"{label} ({len(tags)} حوزه)")
+        lines.append(f"<b>{label}</b> ({len(tags)} حوزه)")
         lines.append(" ".join("#" + t for t in tags))
         lines.append("")
-    lines.append("💬 هر پست با یک پرسش برای گفت‌وگو همراه است و هر جمعه یک *نظرسنجی آموزشی* منتشر می‌شود.")
+    lines.append("💬 هر پست با یک پرسش برای گفت‌وگو همراه است و هر جمعه یک <b>نظرسنجی آموزشی</b> منتشر می‌شود.")
     return "\n".join(lines)
 
 
@@ -632,7 +717,9 @@ AI_SYSTEM_PROMPT = (
     "(سایکوز/اسکیزوفرنی + اختلال مصرف مواد). تو دستیار هستی، نه پزشک؛ هرگز خودت را پزشک "
     "معرفی نکن و نسخه یا تغییر دوز نده. پاسخ را ساختارمند، دقیق و مختصر بده و عدم قطعیت را "
     "صریح بگو. در وضعیت اورژانس اول به خدمات اورژانس (۱۱۵)، اورژانس اجتماعی (۱۲۳) یا "
-    "خط خودکشی (۱۴۸۰) ارجاع بده."
+    "خط خودکشی (۱۴۸۰) ارجاع بده. "
+    "قانون مهم کوتاه‌بودن: پاسخ حداکثر ۴ تا ۶ خط (~۸۰ کلمه) باشد؛ بدون مقدمه، تعارف و تکرار؛ "
+    "فقط نکات کلیدی، در صورت نیاز فهرست کوتاه با خط تیره؛ در پایان فقط در صورت نیاز یک جمله‌ی «قدم بعدی»."
 )
 
 ROLE_GUIDES = {
@@ -653,7 +740,7 @@ def _ask_openai_host(question: str, role: str) -> dict | None:
         {"role": "user", "content": question},
     ]
     body = json.dumps({"model": AI_HOST_MODEL, "messages": messages,
-                       "temperature": 0.3, "max_tokens": 600}).encode("utf-8")
+                       "temperature": 0.3, "max_tokens": 350}).encode("utf-8")
     headers = {"content-type": "application/json",
                "user-agent": "dual-diagnosis-protocol-bot/1.0"}
     if AI_HOST_KEY:
@@ -822,8 +909,13 @@ BTN_CRITICAL = "⚠️ بخش‌های حیاتی"
 BTN_ROLE = "👤 نقش من"
 
 MAIN_KEYBOARD = ReplyKeyboardMarkup(
-    [[BTN_RISK, BTN_TIP], [BTN_SECTIONS, BTN_ROLE], [BTN_TRAINING, BTN_INVITE], [BTN_SCENARIO, BTN_COST], [BTN_CRITICAL, BTN_REPORT], [BTN_HELP]],
+    [[BTN_RISK, BTN_CRITICAL],
+     [BTN_TRAINING, BTN_SCENARIO],
+     [BTN_TIP, BTN_REPORT],
+     [BTN_SECTIONS, BTN_ROLE],
+     [BTN_HELP, BTN_INVITE]],
     resize_keyboard=True,
+    is_persistent=True,
     input_field_placeholder="سؤال خود را فارسی بنویسید…",
 )
 
@@ -920,12 +1012,12 @@ def channel_link() -> str:
 
 
 async def post_to_channel(bot, text: str) -> None:
-    """متن را به کانال پیکربندی‌شده می‌فرستد (با احترام به سقف طول پیام)."""
+    """متن را به کانال پیکربندی‌شده می‌فرستد (HTML؛ در خطا بدون قالب‌بندی)."""
     if not TELEGRAM_CHANNEL_ID:
         raise RuntimeError("TELEGRAM_CHANNEL_ID تنظیم نشده است.")
     for part in split_message(text):
         try:
-            await bot.send_message(chat_id=TELEGRAM_CHANNEL_ID, text=part, parse_mode="Markdown")
+            await bot.send_message(chat_id=TELEGRAM_CHANNEL_ID, text=part, parse_mode="HTML")
         except Exception:
             await bot.send_message(chat_id=TELEGRAM_CHANNEL_ID, text=part)
 
@@ -947,7 +1039,7 @@ async def job_daily_tip(context: ContextTypes.DEFAULT_TYPE) -> None:
             (critical_post_of_day, "سری حیاتی"),
             (family_post_of_day, "سری خانواده"),
             (tip_of_day, "نکته‌ی روز"),
-            (news_post_of_day, "خبر علمی"),
+            (daily_news_post, "خبر علمی"),
             (work_post_of_day, "کار و درآمد"),
             (team_post_of_day, "تیم و استارتاپ"),
         ][phase]
@@ -977,7 +1069,7 @@ async def cmd_post_tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_tags(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """راهنمای هشتگ‌های کانال (۵ حوزه × ۱۰ موضوع)."""
-    await send_long(update, tags_directory(), parse_mode="Markdown")
+    await send_long(update, tags_directory(), parse_mode="HTML")
 
 
 async def cmd_channel_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1038,7 +1130,7 @@ async def cmd_about(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.effective_message.reply_text(tip_of_day(), parse_mode="Markdown",
+    await update.effective_message.reply_text(tip_of_day(), parse_mode="HTML",
                                               reply_markup=MAIN_KEYBOARD)
 
 
@@ -1086,6 +1178,18 @@ async def on_section_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ---------- پرسش و پاسخ ----------
+def _shorten_answer(text: str, limit: int = 1100) -> str:
+    """پاسخ را کوتاه نگه می‌دارد: سقف نویسه + برش در مرز جمله/خط."""
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    for sep in ("\n\n", ". ", "۔ ", "؟ ", "!\n", "\n"):
+        pos = cut.rfind(sep)
+        if pos > limit // 2:
+            return cut[:pos].rstrip() + ("." if sep == ". " else "")
+    return cut.rstrip() + "…"
+
+
 async def answer_question(update: Update, context: ContextTypes.DEFAULT_TYPE, question: str):
     question = (question or "").strip()
     if not question:
@@ -1099,24 +1203,25 @@ async def answer_question(update: Update, context: ContextTypes.DEFAULT_TYPE, qu
         ai_q, srcs = build_grounded_question(question)
         data = await asyncio.to_thread(ask_ai, ai_q, get_role(context))  # بخش هوش مصنوعی
         if data:
-            lines = [data["answer"].rstrip(), ""]
+            answer = _shorten_answer(data["answer"].rstrip())
+            lines = [answer, ""]
             src = data.get("source") or ""
             if src:
                 lines.append(f"🧠 مدل پاسخ‌دهنده: {src}")
             if srcs:
                 lines.append("📚 منابع دانش: " + "، ".join(s[:44] for s in srcs))
             lines.append(DISCLAIMER)
-            await send_long(update, "\n".join(lines))
+            await send_long(update, "\n".join(lines), reply_markup=MAIN_KEYBOARD)
             return
     except Exception as e:
         log.warning("دستیار هوش مصنوعی در دسترس نیست (%s)؛ پاسخ از پروتکل محلی.", e)
-    # حالت آفلاین/بدون AI: جست‌وجو در متن پروتکل (بخش اصلی)
     # حالت آفلاین/بدون AI: پایگاه دانش محلی → متن پروتکل
-    ctx = search_corpus(question, k=2)
+    ctx = search_corpus(question, k=1)
     if ctx:
-        parts = [f"📚 *از پایگاه دانش محلی*\n({c.get('source', '—')})\n\n{(c.get('text') or '')[:900]}"
+        parts = [f"📚 *از پایگاه دانش محلی*\n({c.get('source', '—')})\n\n{(c.get('text') or '')[:600]}"
                  for c in ctx]
-        await send_long(update, "\n\n———\n\n".join(parts) + "\n\n" + DISCLAIMER)
+        await send_long(update, "\n\n———\n\n".join(parts) + "\n\n" + DISCLAIMER,
+                        reply_markup=MAIN_KEYBOARD)
     else:
         hit = await asyncio.to_thread(search_protocol, question)
         if hit:
