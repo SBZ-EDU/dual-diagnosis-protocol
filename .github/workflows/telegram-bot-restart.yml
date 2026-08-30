@@ -1,0 +1,22 @@
+name: telegram-bot-restart
+
+# به‌محض پایان هر اجرای telegram-bot-host (خاتمه‌ی ۶ساعته یا خطا)، فوراً اجرای جدید می‌سازد.
+# (نکته: dispatch با GITHUB_TOKEN پیش‌فرض workflow را اجرا نمی‌کند؛ به همین دلیل از PAT استفاده شده.)
+on:
+  workflow_run:
+    workflows: [telegram-bot-host]
+    types: [completed]
+
+permissions:
+  actions: write
+
+jobs:
+  relaunch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Relaunch bot host immediately
+        run: |
+          sleep 5
+          gh api -X POST repos/SBZ-EDU/dual-diagnosis-protocol/actions/workflows/telegram-bot-host.yml/dispatches -f ref=master
+        env:
+          GH_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
