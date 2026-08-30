@@ -801,8 +801,8 @@ async def cmd_training(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_text(
         "🎓 *دوره‌ی آموزش همراه*\n\n"
         f"پیشرفت شما: {done} از {len(CAREGIVER_MODULES)} ماژول\n\n"
-        "⚠️ بخش‌های حیاتی (نشان‌دار) اولویت اول هستند و آزمون ۵ پرسشی + آموزش عمیق‌تر دارند؛ "
-        "سایر ماژول‌ها ۳ پرسشی‌اند. قبولی = حداقل ۸۰٪.\n"
+        "هر ماژول شامل 🎬 ویدیوی قابل پخش در تلگرام + آزمون ۱۰ پرسشی است. "
+        "⚠️ بخش‌های نشان‌دار (حیاتی) اولویت اول دارند. قبولی = حداقل ۸۰٪ (۸ از ۱۰).\n"
         "پس از تکمیل همه، گواهی با کد اعتبارسنجی از سایت مرکز صادر می‌شود.",
         reply_markup=InlineKeyboardMarkup(rows), parse_mode="Markdown")
 
@@ -821,6 +821,7 @@ async def _ask_training_question(update: Update, context: ContextTypes.DEFAULT_T
         head = (f"🎓 {badge}*{module['title']}*\n"
                 f"📚 منبع: {module['source']} ({module['duration']})\n"
                 f"{module['summary']}\n"
+                + ("🎬 ویدیوی این درس در پیام قبل ارسال شد.\n" if module.get("video") else "")
                 + (f"⚠️ نکات حیاتی: {module['deep']}\n" if module.get("deep") else "")
                 + f"🔗 {module['url']}\n\n")
     msg = await update.effective_message.reply_text(
@@ -840,6 +841,18 @@ async def on_train_module(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     context.user_data["training"] = {"mid": mid, "qi": 0, "answers": []}
     await q.answer()
+    vid = (module.get("video") or {}).get("file_id")
+    if vid:
+        try:
+            await update.effective_message.reply_video(
+                video=vid, supports_streaming=True,
+                caption=(f"🎬 *{module['title']}*\n"
+                         f"👁 {module['video'].get('speaker', '')} — {module['video'].get('minutes', '')}\n\n"
+                         f"{module['summary']}\n\n"
+                         "▶️ تماشا کنید؛ سپس آزمون ۱۰ پرسشی همین‌جا شروع می‌شود."),
+                parse_mode="Markdown")
+        except Exception as e:
+            log.warning("ارسال ویدیوی ماژول %s ناموفق: %s", mid, e)
     await _ask_training_question(update, context, module, first=True)
 
 
@@ -893,7 +906,7 @@ async def _finish_training(update: Update, context: ContextTypes.DEFAULT_TYPE, m
         await send_long(update, text, reply_markup=MAIN_KEYBOARD, parse_mode="Markdown")
     else:
         await update.effective_message.reply_text(
-            f"📚 نمره: {ok} از {total} درست — حداقل ۸۰٪ لازم است ({'همه درست' if total == 3 else '۴ از ۵'}).\n"
+            f"📚 نمره: {ok} از {total} درست — حداقل ۸۰٪ لازم است (۸ از ۱۰).\n"
             "منبع را دوباره مرور کنید و ماژول را تکرار کنید:",
             reply_markup=InlineKeyboardMarkup(
                 [[InlineKeyboardButton("🔄 تلاش دوباره", callback_data=f"train:{module['id']}")]]))
@@ -1378,7 +1391,7 @@ async def cmd_critical(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parts.append(f"⚠️ *{m['title']}* {done}\n{m['deep']}")
     text = ("⚠️ *بخش‌های حیاتی — آموزش ویژه*\n\n"
             "این سه بخش بیشترین نقش را در نجات جان و جلوگیری از بحران دارند؛ "
-            "آزمون هر کدام ۵ پرسشی است و آموزش عمیق‌تری دارد.\n\n"
+            "هر کدام ویدیوی آموزشی + آزمون ۱۰ پرسشی و آموزش عمیق‌تری دارد.\n\n"
             + "\n\n".join(parts))
     if TELEGRAM_CHANNEL_ID:
         text += f"\n\n📢 آموزش روزانه‌ی این مسیر (برای خودتان و معرفی به دیگران): {channel_link()}"
