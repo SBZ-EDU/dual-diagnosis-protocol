@@ -24,7 +24,7 @@ jobs:
       DATA_REPO_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
       AI_HOST_URL: http://127.0.0.1:11434/v1
       AI_HOST_KEY: ollama
-      AI_HOST_MODEL: qwen2.5:3b
+      AI_HOST_MODEL: qwen2.5:7b
       AI_TIMEOUT: "150"
     steps:
       - uses: actions/checkout@v4
@@ -63,7 +63,7 @@ jobs:
             nohup ollama serve > /tmp/ollama.log 2>&1 &
             sleep 5
           fi
-          ollama pull qwen2.5:3b
+          ollama pull qwen2.5:7b
           ollama list
 
       - name: AI smoke test on the real host
@@ -73,17 +73,25 @@ jobs:
           sys.path.insert(0, 'bot')
           from scenarios import SCENARIOS, build_eval_prompt
           sc = next(s for s in SCENARIOS if s["id"] == "sc-overdose")
-          prompt = build_eval_prompt(sc, "فوراً ۱۱۵ می‌گیرم، او را روی پهلو می‌خوابانم و کنارش می‌مانم.")
-          body = json.dumps({"model": "qwen2.5:3b",
-                             "messages": [{"role": "user", "content": prompt}],
-                             "max_tokens": 500, "temperature": 0.3}).encode()
-          req = urllib.request.Request("http://127.0.0.1:11434/v1/chat/completions",
-                                       data=body, method="POST",
-                                       headers={"content-type": "application/json"})
-          ans = json.loads(urllib.request.urlopen(req, timeout=600).read())["choices"][0]["message"]["content"]
-          open("ai-smoke.txt", "w", encoding="utf-8").write(ans)
-          print("SMOKE TEST OK — first 200 chars:")
-          print(ans[:200])
+          eval_prompt = build_eval_prompt(sc, "فوراً ۱۱۵ می‌گیرم، او را روی پهلو می‌خوابانم و کنارش می‌مانم.")
+          import telegram_bot as tb
+          rag_q = "اگر بیمار دوباره مصرف کرد، خانواده چه کند؟"
+          rag_prompt, srcs = tb.build_grounded_question(rag_q)
+          sys_prompt = tb.AI_SYSTEM_PROMPT + " " + tb.ROLE_GUIDES["family"]
+          tests = [("scenario-eval", [{"role": "user", "content": eval_prompt}]),
+                   ("family-rag", [{"role": "system", "content": sys_prompt},
+                                   {"role": "user", "content": rag_prompt}])]
+          out = []
+          for label, messages in tests:
+              body = json.dumps({"model": "qwen2.5:7b", "messages": messages,
+                                 "max_tokens": 500, "temperature": 0.3}).encode()
+              req = urllib.request.Request("http://127.0.0.1:11434/v1/chat/completions",
+                                           data=body, method="POST",
+                                           headers={"content-type": "application/json"})
+              ans = json.loads(urllib.request.urlopen(req, timeout=600).read())["choices"][0]["message"]["content"]
+              out.append(f"===== {label} =====\n{ans}")
+              print(f"{label}: {ans[:120]}")
+          open("ai-smoke.txt", "w", encoding="utf-8").write("\n\n".join(out))
           EOF
           cp ai-smoke.txt /tmp/datarepo/ 2>/dev/null || true
           git -C /tmp/datarepo add -A || true
