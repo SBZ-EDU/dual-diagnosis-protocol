@@ -26,6 +26,21 @@
 /* =========================================================
    نوار ساده‌ی بیمار — کم‌بار شناختی، همدلانه
    ========================================================= */
+/* ===================== LOVE TRIANGLE ===================== */
+.love-intro { max-width: 760px; line-height: 2; margin: 0 auto 28px; text-align: center; font-size: 1.05rem; }
+.love-card { background: var(--bg-card, #fff); border: 1px solid rgba(236, 72, 153, .18); border-radius: 16px; padding: 26px 20px; text-align: center; box-shadow: 0 6px 18px rgba(236, 72, 153, .06); }
+.love-card .love-emoji { font-size: 2.2rem; margin-bottom: 10px; }
+.love-card h4 { margin: 6px 0 10px; font-size: 1.15rem; }
+.love-card p { line-height: 1.9; font-size: .95rem; opacity: .9; }
+.love-warn, .love-family { border-radius: 16px; padding: 24px 26px; margin: 26px 0; line-height: 2; }
+.love-warn { background: linear-gradient(135deg, rgba(255, 244, 230, .9), rgba(255, 236, 210, .6)); border: 1px solid rgba(245, 158, 11, .25); }
+.love-family { background: linear-gradient(135deg, rgba(240, 244, 255, .9), rgba(230, 236, 255, .6)); border: 1px solid rgba(99, 102, 241, .22); }
+.love-warn h3, .love-family h3 { margin: 0 0 12px; font-size: 1.1rem; }
+.love-warn ul, .love-family ul { margin: 0; padding-right: 20px; }
+.love-warn li, .love-family li { margin-bottom: 10px; }
+.love-cta { text-align: center; margin-top: 22px; line-height: 2; }
+.love-cta a { color: #ec4899; font-weight: 700; }
+
 .patient-strip {
   background: linear-gradient(135deg, #ecf6f6, #fdf8ef);
   border-bottom: 1px solid var(--line);

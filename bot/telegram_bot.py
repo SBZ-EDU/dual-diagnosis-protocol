@@ -913,7 +913,7 @@ def _ask_openai_host(question: str, role: str) -> dict | None:
         {"role": "user", "content": question},
     ]
     body = json.dumps({"model": AI_HOST_MODEL, "messages": messages,
-                       "temperature": 0.3, "max_tokens": 350}).encode("utf-8")
+                       "temperature": 0.3, "max_tokens": 240}).encode("utf-8")
     headers = {"content-type": "application/json",
                "user-agent": "dual-diagnosis-protocol-bot/1.0"}
     if AI_HOST_KEY:
@@ -1023,11 +1023,22 @@ def search_corpus(query: str, k: int = 3) -> list:
     return _search_corpus_idf(query, k)
 
 
+_IDF_NORMED: list | None = None
+
+
+def _idf_normed() -> list:
+    """نرمال‌شده‌ی پایگاه دانش — فقط یک بار محاسبه و در کش ماژول."""
+    global _IDF_NORMED
+    if _IDF_NORMED is None:
+        _IDF_NORMED = [_norm_fa(c.get("text") or "") for c in CORPUS]
+    return _IDF_NORMED
+
+
 def _search_corpus_idf(query: str, k: int = 3) -> list:
     """جست‌وجوی IDF-وزن‌دار در پایگاه دانش محلی (فارسی + انگلیسی)."""
     if not CORPUS:
         return []
-    normed = [_norm_fa(c.get("text") or "") for c in CORPUS]
+    normed = _idf_normed()
     toks = {w for w in _norm_fa(query).split() if len(w) > 2 and w not in _FA_STOP}
     if not toks:
         return []
@@ -1202,9 +1213,44 @@ def split_message(text: str, limit: int = MAX_LEN) -> list[str]:
     return parts
 
 
+def _md_clean(text: str) -> str:
+    """حذف نشان‌های مارک‌داون برای ارسالِ ساده‌ی تمیز (بدون ستاره‌ی خام)."""
+    text = re.sub(r"\*{1,3}([^*\n]+)\*{1,3}", r"\1", text)   # *بولد* / **بولد**
+    text = re.sub(r"(?<!\w)_([^_\n]+)_(?!\w)", r"\1", text)  # _ایتالیک_
+    text = text.replace("*", "").replace("`", "")  # ستاره/بک‌تیک یتیم
+    return text
+
+
 async def send_long(update: Update, text: str, **kw):
+    """ارسال چندبخشیِ امن: مارک‌داون را می‌آزماید و در خطا متنِ پاک را می‌فرستد.
+
+    اگر parse_mode داده نشده باشد و متن نشان تأکید داشته باشد، ابتدا مارک‌داون
+    امتحان می‌شود (نمایش درست بولد) و در صورت ردِ تلگرام، متن بدون ستاره ارسال می‌شود.
+    """
+    pm = kw.get("parse_mode")
+    plain_kw = {k: v for k, v in kw.items() if k != "parse_mode"}
     for part in split_message(text):
-        await update.effective_message.reply_text(part, **kw)
+        has_md = any(c in part for c in ("*", "_", "`", "["))
+        if pm:
+            # حالت صریح فراخواننده (Markdown/HTML): اول همان‌طور، در خطا متنِ پاک
+            try:
+                await update.effective_message.reply_text(part, **kw)
+                continue
+            except Exception:
+                pass
+        elif has_md:
+            try:
+                await update.effective_message.reply_text(part, **{**kw, "parse_mode": "Markdown"})
+                continue
+            except Exception:
+                pass
+        else:
+            try:
+                await update.effective_message.reply_text(part, **plain_kw)
+                continue
+            except Exception:
+                pass
+        await update.effective_message.reply_text(_md_clean(part), **plain_kw)
 
 
 def throttled(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
@@ -1425,7 +1471,8 @@ async def answer_question(update: Update, context: ContextTypes.DEFAULT_TYPE, qu
         return
     typing = asyncio.create_task(_keep_typing(update.effective_chat.id, context))
     try:
-        ai_q, srcs = build_grounded_question(question)
+        # در نخ جدا: embedding روی Ollama و جست‌وجوی IDF نباید حلقه‌ی رویداد را قفل کنند
+        ai_q, srcs = await asyncio.to_thread(build_grounded_question, question)
         data = await asyncio.to_thread(ask_ai, ai_q, get_role(context))  # بخش هوش مصنوعی
         if data:
             answer = _shorten_answer(data["answer"].rstrip())
@@ -1445,7 +1492,7 @@ async def answer_question(update: Update, context: ContextTypes.DEFAULT_TYPE, qu
     except Exception as e:
         log.warning("دستیار هوش مصنوعی در دسترس نیست (%s)؛ پاسخ از پروتکل محلی.", e)
     # حالت آفلاین/بدون AI: پایگاه دانش محلی → متن پروتکل
-    ctx = search_corpus(question, k=1)
+    ctx = await asyncio.to_thread(search_corpus, question, 1)
     if ctx:
         parts = [f"📚 *از پایگاه دانش محلی*\n({c.get('source', '—')})\n\n{(c.get('text') or '')[:600]}"
                  for c in ctx]
