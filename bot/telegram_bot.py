@@ -1561,8 +1561,12 @@ async def on_role_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             if _enable_daily(context.application, update.effective_user.id):
                 daily_note = ("\n\n☀️ برای نقش بیمار، *چک‌ین روزانه* را روشن کردم:\n"
-                              "🕘 صبح ۹: یادآور دارو + چک حال | 🌙 شب ۲۱: چک وسوسه\n"
-                              "با /daily می‌توانی وضعیتش را ببینی یا خاموشش کنی.")
+                              "🕘 صبح ۹: یادآور دارو + چک حال | 🌙 شب ۲۱: چک وسوسه + پیام شخصی (هوش مصنوعی)\n"
+                              "اولین چک‌ین را همین حالا می‌فرستم؛ با /daily وضعیتش را می‌توانی ببینی یا خاموشش کنی.")
+                kind = "m" if datetime.now().hour < 15 else "e"
+                dlog = context.user_data.get("daily_log") or {}
+                if kind not in (dlog.get(_today_key()) or {}):
+                    await _send_daily_check(context.bot, update.effective_user.id, kind)
         except Exception as e:
             log.warning("فعال‌سازی چک‌ین روزانه ناموفق: %s", e)
     if q.message is not None:
@@ -1652,18 +1656,41 @@ def _today_key() -> str:
     return datetime.now().strftime("%Y%m%d")
 
 
+def _daily_check_message(kind: str):
+    """سازنده‌ی مشترک پیام چک‌ین (m=صبح/حال، e=شب/وسوسه)."""
+    if kind == "m":
+        text = ("☀️ *صبح بخیر!*\n\n"
+                "💊 وقت داروهات — حتی وقتی حالت خوب است؛ حالِ خوب، اثرِ همان داروست.\n\n"
+                "حالت الان چطور است؟")
+        labels = MOOD_LABELS
+    else:
+        text = ("🌙 *شب بخیر*\n\n"
+                "قبل از خواب، یک چک صادقانه با خودت:\n"
+                "امشب وسوسه‌ی مصرف چقدر بود؟")
+        labels = URGE_LABELS
+    kb = InlineKeyboardMarkup([[InlineKeyboardButton(lbl, callback_data=f"dchk:{kind}:{i}:{_today_key()}")
+                                for i, lbl in enumerate(labels)]])
+    return text, kb
+
+
+async def _send_daily_check(bot, uid: int, kind: str) -> bool:
+    """ارسال چک‌ینِ روزِ جاری (صبح یا شب)."""
+    text, kb = _daily_check_message(kind)
+    try:
+        await bot.send_message(uid, text, parse_mode="Markdown", reply_markup=kb)
+        return True
+    except Exception as e:
+        log.warning("ارسال چک‌ین (%s) برای %s ناموفق: %s", kind, uid, e)
+        return False
+
+
 async def _job_daily_morning(context: ContextTypes.DEFAULT_TYPE) -> None:
     """صبح (۹ تهران): یادآور دارو + چک حال."""
     uid = context.job.data
     mot = DAILY_MOTIVATION[time.localtime().tm_yday % len(DAILY_MOTIVATION)]
-    text = ("☀️ *صبح بخیر!*\n\n"
-            "💊 وقت داروهات — حتی وقتی حالت خوب است؛ حالِ خوب، اثرِ همان داروست.\n\n"
-            "حالت الان چطور است؟")
-    kb = InlineKeyboardMarkup([[InlineKeyboardButton(lbl, callback_data=f"dchk:m:{i}:{_today_key()}")
-                                for i, lbl in enumerate(MOOD_LABELS)]])
     try:
-        await context.bot.send_message(uid, text, parse_mode="Markdown", reply_markup=kb)
-        await context.bot.send_message(uid, f"🌟 {mot}")
+        if await _send_daily_check(context.bot, uid, "m"):
+            await context.bot.send_message(uid, f"🌟 {mot}")
     except Exception as e:
         log.warning("چک‌ین صبح برای %s ناموفق: %s", uid, e)
 
@@ -1704,13 +1731,8 @@ def _ai_daily_message(snapshot: str) -> str | None:
 async def _job_daily_evening(context: ContextTypes.DEFAULT_TYPE) -> None:
     """شب (۲۱ تهران): چک وسوسه + پیام شخصی (هوش مصنوعی، در غیر این‌صورت ایستا)."""
     uid = context.job.data
-    text = ("🌙 *شب بخیر*\n\n"
-            "قبل از خواب، یک چک صادقانه با خودت:\n"
-            "امشب وسوسه‌ی مصرف چقدر بود؟")
-    kb = InlineKeyboardMarkup([[InlineKeyboardButton(lbl, callback_data=f"dchk:e:{i}:{_today_key()}")
-                                for i, lbl in enumerate(URGE_LABELS)]])
     try:
-        await context.bot.send_message(uid, text, parse_mode="Markdown", reply_markup=kb)
+        await _send_daily_check(context.bot, uid, "e")
         mot = await asyncio.to_thread(
             _ai_daily_message, _daily_snapshot(context)) or (
             "🌟 " + DAILY_MOTIVATION[(time.localtime().tm_yday + 5) % len(DAILY_MOTIVATION)])
@@ -1857,8 +1879,13 @@ async def on_daily_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await q.message.reply_text(
                 "☀️ چک‌ین روزانه روشن شد!\n\n"
                 "🕘 هر روز صبح ۹ (تهران): یادآور دارو + چک حال\n"
-                "🌙 هر شب ۲۱: چک وسوسه + پیام انگیزشی\n\n"
-                "هر وقت بخواهی با /daily خاموشش کن.")
+                "🌙 هر شب ۲۱: چک وسوسه + پیام شخصی (هوش مصنوعی)\n\n"
+                "و اولین چک‌ین همین حالا 👇")
+            # اولین چک‌ینِ امروز بلافاصله (قبل از ۱۵ → صبح، بعد از آن → شب)
+            kind = "m" if datetime.now().hour < 15 else "e"
+            dlog = context.user_data.get("daily_log") or {}
+            if kind not in (dlog.get(_today_key()) or {}):
+                await _send_daily_check(context.bot, uid, kind)
         else:
             await q.answer("از قبل روشن بود ✅")
     else:
