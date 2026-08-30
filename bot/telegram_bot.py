@@ -822,13 +822,20 @@ async def _ask_training_question(update: Update, context: ContextTypes.DEFAULT_T
                 f"📚 منبع: {module['source']} ({module['duration']})\n"
                 f"{module['summary']}\n"
                 + ("🎬 ویدیوی این درس در پیام قبل ارسال شد.\n" if module.get("video") else "")
+                + (("📚 *منابع استاندارد این درس:*\n" + "\n".join(
+                     f"  • [{s['name']}]({s['url']})" if s.get("url") else f"  • {s['name']}"
+                     for s in module["sources"]) + "\n") if module.get("sources") else "")
                 + (f"⚠️ نکات حیاتی: {module['deep']}\n" if module.get("deep") else "")
                 + f"🔗 {module['url']}\n\n")
-    msg = await update.effective_message.reply_text(
-        head + f"❓ *پرسش {qi + 1} از {len(quiz)}*\n\n{question['q']}",
-        reply_markup=InlineKeyboardMarkup(
-            [[InlineKeyboardButton(o[:60], callback_data=f"tq:{module['id']}:{qi}:{i}")]
-             for i, o in enumerate(question["o"])]))
+    qtext = head + f"❓ *پرسش {qi + 1} از {len(quiz)}*\n\n{question['q']}"
+    kb = InlineKeyboardMarkup(
+        [[InlineKeyboardButton(o[:60], callback_data=f"tq:{module['id']}:{qi}:{i}")]
+         for i, o in enumerate(question["o"])])
+    try:
+        msg = await update.effective_message.reply_text(qtext, parse_mode="Markdown",
+                                                        reply_markup=kb)
+    except Exception:
+        msg = await update.effective_message.reply_text(qtext, reply_markup=kb)
     st["qmsg"] = msg.message_id
 
 
@@ -847,7 +854,8 @@ async def on_train_module(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.effective_message.reply_video(
                 video=vid, supports_streaming=True,
                 caption=(f"🎬 *{module['title']}*\n"
-                         f"👁 {module['video'].get('speaker', '')} — {module['video'].get('minutes', '')}\n\n"
+                         f"👁 {module['video'].get('speaker', '')} — {module['video'].get('minutes', '')}\n"
+                         f"💬 زیرنویس: {module['video'].get('subtitles', '—')}\n\n"
                          f"{module['summary']}\n\n"
                          "▶️ تماشا کنید؛ سپس آزمون ۱۰ پرسشی همین‌جا شروع می‌شود."),
                 parse_mode="Markdown")

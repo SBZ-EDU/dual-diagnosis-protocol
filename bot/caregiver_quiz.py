@@ -18,10 +18,18 @@ CAREGIVER_MODULES = [
         "url": "https://www.ted.com/talks/celeste_headlee_10_ways_to_have_a_better_conversation",
         "summary": "مهارت گفت‌وگوی واقعی: بازگویی، تأیید احساس و پرهیز از نصیحت فوری.",
         "video": {
-            "file_id": "BAACAgEAAxkDAANsapQLldby3-eQ_OADMcIp_Cy0aGMAAv8GAAJWNqBEjVuHdtcRwW09BA",
+            "file_id": "BAACAgEAAxkDAAOFapQSMRUyqMYV9vxxAjVYBn3cvbIAAgcHAAJWNqBEnDmOyjARplE9BA",
             "speaker": "Celeste Headlee · TED",
             "minutes": "۱۱ دقیقه",
+            "subtitles": "فارسی ✅",
         },
+        "sources": [
+            {"name": "TED · Celeste Headlee", "url": "https://www.ted.com/talks/celeste_headlee_10_ways_to_have_a_better_conversation"},
+            {"name": "YouTube · کانال رسمی TED", "url": "https://www.youtube.com/@TED"},
+            {"name": "WHO · mhGAP", "url": "https://www.who.int/initiatives/mental-health-gap-action-programme"},
+            {"name": "NICE · NG58 سایکوز", "url": "https://www.nice.org.uk/guidance/ng58"},
+            {"name": "SAMHSA · خانواده و بهبودی", "url": "https://www.samhsa.gov/family-programs"},
+        ],
         "quiz": [
             {"q": "گوش دادن فعال یعنی چه؟",
              "o": ["نصیحت فوری و راه‌حل دادن", "سکوت مطلق و هیچ نگفتن",
@@ -71,10 +79,18 @@ CAREGIVER_MODULES = [
         "url": "https://www.ted.com/talks/sangu_delle_there_s_no_shame_in_taking_care_of_your_mental_health",
         "summary": "انگ چه آسیبی به کمک‌خواهی می‌زند و زبان ما چطور آن را کم می‌کند.",
         "video": {
-            "file_id": "BAACAgEAAxkDAANtapQLnBKg41ZsI9jWx-Bs00xZX8MAAwcAAlY2oESRT2h1NxME5D0E",
+            "file_id": "BAACAgEAAxkDAAOGapQSN9t3OHwOoyCWcKLt1L0T5fUAAggHAAJWNqBEcgSAbf1nPik9BA",
             "speaker": "Sangu Delle · TED",
             "minutes": "۹ دقیقه",
+            "subtitles": "فارسی ✅",
         },
+        "sources": [
+            {"name": "TED · Sangu Delle", "url": "https://www.ted.com/talks/sangu_delle_there_s_no_shame_in_taking_care_of_your_mental_health"},
+            {"name": "YouTube · کانال رسمی TED", "url": "https://www.youtube.com/@TED"},
+            {"name": "WHO · سلامت روان", "url": "https://www.who.int/health-topics/mental-health"},
+            {"name": "NIDA · اعتیاد و انگ", "url": "https://nida.nih.gov"},
+            {"name": "NICE · NG58", "url": "https://www.nice.org.uk/guidance/ng58"},
+        ],
         "quiz": [
             {"q": "انگ بیماری روانی بیشترین آسیب را به چه می‌زند؟",
              "o": ["هیچ اثری ندارد", "درمان را سریع‌تر می‌کند",
@@ -126,10 +142,18 @@ CAREGIVER_MODULES = [
         "critical": True,
         "deep": "برنامه‌ی ایمنی یعنی پیش از بحران نوشتن: علائم هشدارِ مخصوص بیمارِ شما + سه شماره‌ی اورژانس + نقش هر عضو خانه + محلِ امنِ دور کردن وسایل. در لحظه‌ی بحران، منطق‌بازی کارساز نیست؛ ایمنی فوری و فاصله‌گیری اول است.",
         "video": {
-            "file_id": "BAACAgEAAxkDAANwapQLrWjhWLBuuGlgw_8jPMAwJHsAAgMHAAJWNqBEmiBvyQsh-CQ9BA",
+            "file_id": "BAACAgEAAxkDAAOJapQSVt6MqtyrAhhFE5SE4k-I304AAgsHAAJWNqBETfAoRs61q-M9BA",
             "speaker": "Vikram Patel · TED",
             "minutes": "۱۲ دقیقه",
+            "subtitles": "فارسی ✅",
         },
+        "sources": [
+            {"name": "TED · Vikram Patel", "url": "https://www.ted.com/talks/vikram_patel_mental_health_for_all_by_involving_all"},
+            {"name": "WHO · mhGAP", "url": "https://www.who.int/initiatives/mental-health-gap-action-programme"},
+            {"name": "SAMHSA · مدیریت بحران", "url": "https://www.samhsa.gov"},
+            {"name": "CDC · پیشگیری از خودکشی", "url": "https://www.cdc.gov/suicide-prevention/"},
+            {"name": "اورژانس‌های ایران: ۱۱۵ · ۱۲۳ · ۱۴۸۰", "url": ""},
+        ],
         "quiz": [
             {"q": "برنامه‌ی ایمنی خانواده چه چیزهایی را شامل می‌شود؟",
              "o": ["فقط شماره‌ی پزشک", "برنامه‌ی غذایی هفتگی", "قفل کردن در منزل",
@@ -182,10 +206,18 @@ CAREGIVER_MODULES = [
         "url": "https://www.nice.org.uk/guidance/ng58",
         "summary": "چرا روان‌آموزشی و مداخله‌ی خانواده خطر عود را کم می‌کند؛ توصیه‌های رسمی NICE.",
         "video": {
-            "file_id": "BAACAgEAAxkDAANuapQLoZgMo7QtamlD0ocWvb2j0yUAAgEHAAJWNqBEkib3zw70Sos9BA",
+            "file_id": "BAACAgEAAxkDAAOHapQSPViw9lW08qCyVjjr_sbVxoUAAgkHAAJWNqBEZsHWpBH-DsY9BA",
             "speaker": "Elyn Saks · TED",
             "minutes": "۱۵ دقیقه",
+            "subtitles": "فارسی ✅",
         },
+        "sources": [
+            {"name": "TED · Elyn Saks", "url": "https://www.ted.com/talks/elyn_saks_a_tale_of_mental_illness_from_the_inside"},
+            {"name": "NICE · NG58 مداخله‌ی خانواده", "url": "https://www.nice.org.uk/guidance/ng58"},
+            {"name": "NAMI · Family-to-Family", "url": "https://www.nami.org"},
+            {"name": "WHO · سلامت روان", "url": "https://www.who.int/health-topics/mental-health"},
+            {"name": "YouTube · کانال رسمی TED", "url": "https://www.youtube.com/@TED"},
+        ],
         "quiz": [
             {"q": "طبق شواهد، روان‌آموزودی و مداخله‌ی خانواده در سایکوز چه اثری دارد؟",
              "o": ["افزایش نرخ بستری", "اثری ندارد", "جایگزین دارودرمانی می‌شود",
@@ -239,10 +271,18 @@ CAREGIVER_MODULES = [
         "critical": True,
         "deep": "دو قانون طلایی دارو: ۱) هیچ تغییری در دوز بدون پزشک نه — حتی وقتی حال خوب است؛ خوب بودنِ حال، خودِ اثر داروست. ۲) تب + سفتی عضله + گیجی شدید = اورژانس؛ فوراً، دیر نکنید (احتمال سندرم بدخیم نورولپتیک). عوارض معمولی را یادداشت کنید و به پزشک بگویید؛ قطع ناگهانی هرگز.",
         "video": {
-            "file_id": "BAACAgEAAxkDAANvapQLpwMS6P3ih8b93n0CxY5bkBkAAgIHAAJWNqBE6wxAUQWcX789BA",
+            "file_id": "BAACAgEAAxkDAAOIapQSQ6GxlyZMOoBTa5x05RkrQPcAAgoHAAJWNqBE-2eW93nqVOs9BA",
             "speaker": "Thomas Insel · TED",
             "minutes": "۱۳ دقیقه",
+            "subtitles": "فارسی ✅",
         },
+        "sources": [
+            {"name": "TED · Thomas Insel", "url": "https://www.ted.com/talks/thomas_insel_toward_a_new_understanding_of_mental_illness"},
+            {"name": "FDA · MedWatch گزارش عوارض", "url": "https://www.fda.gov/safety/medwatch"},
+            {"name": "NICE · CG120 داروهای ضدروان‌پریشی", "url": "https://www.nice.org.uk/guidance/cg120"},
+            {"name": "FDA · اخبار دارو", "url": "https://www.fda.gov/drugs"},
+            {"name": "CDC", "url": "https://www.cdc.gov"},
+        ],
         "quiz": [
             {"q": "اگر بیمار یک دوز دارو را فراموش کند، همراه چه کند؟",
              "o": ["دوز بعدی را دوبرابر کند", "طبق نظر خودش جبران کند",
@@ -296,10 +336,18 @@ CAREGIVER_MODULES = [
         "critical": True,
         "deep": "شواهد می‌گوید پرسیدن مستقیم درباره‌ی خودکشی خطر را کم می‌کند، نه زیاد. سه کار نجات‌دهنده: پرسیدنِ آرام، دور کردن وسایل (قرص، طناب، سلاح) و تنها نگذاشتن. سه شماره‌ی نجات: ۱۱۵ اورژانس پزشکی · ۱۲۳ اورژانس اجتماعی · ۱۴۸۰ خط خودکشی.",
         "video": {
-            "file_id": "BAACAgEAAxkDAANxapQLsiVu4brNA4TNcFPlps5Gk44AAgQHAAJWNqBE9e1GyQlHoPk9BA",
+            "file_id": "BAACAgEAAxkDAAOKapQSXMHm7JCXRPpYlSxDmmhCVQQAAgwHAAJWNqBEHQnAoV_7Lfg9BA",
             "speaker": "Kevin Briggs · TED",
             "minutes": "۱۴ دقیقه",
+            "subtitles": "فارسی ✅",
         },
+        "sources": [
+            {"name": "TED · Kevin Briggs", "url": "https://www.ted.com/talks/kevin_briggs_the_bridge_between_suicide_and_life"},
+            {"name": "WHO · پیشگیری از خودکشی", "url": "https://www.who.int/health-topics/suicide"},
+            {"name": "CDC · پیشگیری از خودکشی", "url": "https://www.cdc.gov/suicide-prevention/"},
+            {"name": "NICE · خودآسیبی", "url": "https://www.nice.org.uk"},
+            {"name": "خط خودکشی ایران: ۱۴۸۰ · اورژانس اجتماعی: ۱۲۳", "url": ""},
+        ],
         "quiz": [
             {"q": "اگر گمان می‌کنید عزیزتان به خودکشی فکر می‌کند، اولین کار درست چیست؟",
              "o": ["تا خودش نگویی موضوع را باز نکنید", "موضوع را بهانه‌وار عوض کنید",
