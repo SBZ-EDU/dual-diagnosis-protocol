@@ -22,6 +22,10 @@ jobs:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
       DATA_REPO_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+      AI_HOST_URL: http://127.0.0.1:11434/v1
+      AI_HOST_KEY: ollama
+      AI_HOST_MODEL: qwen2.5:3b
+      AI_TIMEOUT: "150"
     steps:
       - uses: actions/checkout@v4
 
@@ -51,6 +55,41 @@ jobs:
 
       - name: Install dependencies
         run: pip install -q -r bot/requirements.txt
+
+      - name: Setup self-hosted AI (Ollama + Qwen 3B)
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh || true
+          if ! curl -s http://127.0.0.1:11434/api/tags > /dev/null; then
+            nohup ollama serve > /tmp/ollama.log 2>&1 &
+            sleep 5
+          fi
+          ollama pull qwen2.5:3b
+          ollama list
+
+      - name: AI smoke test on the real host
+        run: |
+          python3 - <<'EOF'
+          import json, sys, urllib.request
+          sys.path.insert(0, 'bot')
+          from scenarios import SCENARIOS, build_eval_prompt
+          sc = next(s for s in SCENARIOS if s["id"] == "sc-overdose")
+          prompt = build_eval_prompt(sc, "فوراً ۱۱۵ می‌گیرم، او را روی پهلو می‌خوابانم و کنارش می‌مانم.")
+          body = json.dumps({"model": "qwen2.5:3b",
+                             "messages": [{"role": "user", "content": prompt}],
+                             "max_tokens": 500, "temperature": 0.3}).encode()
+          req = urllib.request.Request("http://127.0.0.1:11434/v1/chat/completions",
+                                       data=body, method="POST",
+                                       headers={"content-type": "application/json"})
+          ans = json.loads(urllib.request.urlopen(req, timeout=600).read())["choices"][0]["message"]["content"]
+          open("ai-smoke.txt", "w", encoding="utf-8").write(ans)
+          print("SMOKE TEST OK — first 200 chars:")
+          print(ans[:200])
+          EOF
+          cp ai-smoke.txt /tmp/datarepo/ 2>/dev/null || true
+          git -C /tmp/datarepo add -A || true
+          git -C /tmp/datarepo -c user.name="bot-sync" -c user.email="bot@users.noreply.github.com" \
+            commit -qm "ai smoke test [skip ci]" || true
+          git -C /tmp/datarepo push -q origin main || true
 
       - name: Run bot (~5h48m) with periodic data sync
         run: |

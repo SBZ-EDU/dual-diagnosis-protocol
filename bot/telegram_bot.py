@@ -340,6 +340,69 @@ def ask_ai(question: str, role: str = "patient") -> dict | None:
 
 
 # ============================================================
+# ۴-ب) پایگاه دانش محلی (پروتکل + مقالات + راهنماها — بدون سرویس ابری)
+# ============================================================
+CORPUS_PATH = os.path.join(BOT_DIR, "knowledge.json")
+CORPUS: list = []
+try:
+    with open(CORPUS_PATH, encoding="utf-8") as _f:
+        CORPUS = json.load(_f)
+except (OSError, ValueError):
+    pass
+if CORPUS:
+    log.info("پایگاه دانش محلی بارگذاری شد: %d قطعه.", len(CORPUS))
+
+_FA_STOP = {"و", "در", "به", "از", "که", "این", "آن", "را", "با", "برای", "است", "های",
+            "چه", "چگونه", "آیا", "خود", "شما", "وقتی", "باید", "می", "شود", "هزار"}
+
+
+def _norm_fa(s: str) -> str:
+    """نرمال‌سازی فارسی برای جست‌وجوی کلیدواژه‌ای."""
+    return s.replace("ي", "ی").replace("ك", "ک").replace(chr(0x200C), " ").lower()
+
+
+def search_corpus(query: str, k: int = 3) -> list:
+    """جست‌وجوی IDF-وزن‌دار در پایگاه دانش محلی (فارسی + انگلیسی)."""
+    if not CORPUS:
+        return []
+    normed = [_norm_fa(c.get("text") or "") for c in CORPUS]
+    toks = {w for w in _norm_fa(query).split() if len(w) > 2 and w not in _FA_STOP}
+    if not toks:
+        return []
+    weights = {}
+    for t in toks:
+        df = sum(1 for n in normed if t in n)
+        if df:
+            weights[t] = 1.0 / (df ** 0.5)
+    if not weights:
+        return []
+    scored = []
+    for i, n in enumerate(normed):
+        sc = sum(w for t, w in weights.items() if t in n)
+        if sc > 0:
+            scored.append((sc, i))
+    scored.sort(reverse=True)
+    if not scored or scored[0][0] < 0.15:
+        return []
+    return [CORPUS[i] for _, i in scored[:k]]
+
+
+def build_grounded_question(question: str) -> tuple:
+    """پرسش کاربر + شواهدِ پایگاه دانش محلی → پرامپت مستند (RAG محلی)."""
+    ctx = search_corpus(question)
+    if not ctx:
+        return question, []
+    evid = "\n".join(
+        f"شواهد {i + 1}. ({c.get('source', '—')}): {(c.get('text') or '')[:700]}"
+        for i, c in enumerate(ctx))
+    srcs = sorted({(c.get("source") or "—") for c in ctx})
+    prompt = (f"شواهد:\n{evid}\n\nپرسش: {question}\n\n"
+              "فقط بر اساس شواهد بالا پاسخ بده و به شماره‌ی شواهد ارجاع بده؛ "
+              "اگر شواهد کافی نیست صریح بگو.")
+    return prompt, srcs
+
+
+# ============================================================
 # رابط تلگرام
 # ============================================================
 MAX_LEN = 3800
@@ -611,25 +674,35 @@ async def answer_question(update: Update, context: ContextTypes.DEFAULT_TYPE, qu
         return
     typing = asyncio.create_task(_keep_typing(update.effective_chat.id, context))
     try:
-        data = await asyncio.to_thread(ask_ai, question, get_role(context))  # بخش هوش مصنوعی
+        ai_q, srcs = build_grounded_question(question)
+        data = await asyncio.to_thread(ask_ai, ai_q, get_role(context))  # بخش هوش مصنوعی
         if data:
             lines = [data["answer"].rstrip(), ""]
             src = data.get("source") or ""
             if src:
-                lines.append(f"🧠 منبع پاسخ: {src}")
+                lines.append(f"🧠 مدل پاسخ‌دهنده: {src}")
+            if srcs:
+                lines.append("📚 منابع دانش: " + "، ".join(s[:44] for s in srcs))
             lines.append(DISCLAIMER)
             await send_long(update, "\n".join(lines))
             return
     except Exception as e:
         log.warning("دستیار هوش مصنوعی در دسترس نیست (%s)؛ پاسخ از پروتکل محلی.", e)
     # حالت آفلاین/بدون AI: جست‌وجو در متن پروتکل (بخش اصلی)
-    hit = await asyncio.to_thread(search_protocol, question)
-    if hit:
-        await send_long(update, f"📖 *از پروتکل درمان — {hit['title']}*\n\n{hit['text']}\n\n{DISCLAIMER}",
-                        parse_mode="Markdown")
+    # حالت آفلاین/بدون AI: پایگاه دانش محلی → متن پروتکل
+    ctx = search_corpus(question, k=2)
+    if ctx:
+        parts = [f"📚 *از پایگاه دانش محلی*\n({c.get('source', '—')})\n\n{(c.get('text') or '')[:900]}"
+                 for c in ctx]
+        await send_long(update, "\n\n———\n\n".join(parts) + "\n\n" + DISCLAIMER)
     else:
-        await update.effective_message.reply_text(
-            "در حال حاضر پاسخی پیدا نشد. لطفاً سؤال را دقیق‌تر بپرسید یا بعداً تلاش کنید.\n" + DISCLAIMER)
+        hit = await asyncio.to_thread(search_protocol, question)
+        if hit:
+            await send_long(update, f"📖 *از پروتکل درمان — {hit['title']}*\n\n{hit['text']}\n\n{DISCLAIMER}",
+                            parse_mode="Markdown")
+        else:
+            await update.effective_message.reply_text(
+                "در حال حاضر پاسخی پیدا نشد. لطفاً سؤال را دقیق‌تر بپرسید یا بعداً تلاش کنید.\n" + DISCLAIMER)
 
 
 async def _keep_typing(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
