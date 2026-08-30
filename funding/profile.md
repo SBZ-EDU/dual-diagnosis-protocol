@@ -39,7 +39,7 @@ A protocol-driven, AI-assisted companion platform — in Persian, where the pati
    implementation), role-aware AI Q&A (patient / family / clinician get differently-framed
    answers), longitudinal risk tracking with trend reports, a 14-part daily evidence-based
    education series, and an offline protocol-search fallback.
-3. **Public news channel (@AI_Aiddiction_Assistant)** — daily evidence-based education posts.
+3. **Public news channel (@AI_Addiction_assistant)** — daily evidence-based education posts.
 4. **AI backend (Cloudflare)** — RAG over 200+ papers and guidelines, LLM answers with
    citations, D1 response cache, usage telemetry, experiment tracking (W&B).
 

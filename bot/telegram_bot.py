@@ -173,6 +173,40 @@ CRITICAL_SERIES = [
 ]
 
 
+FAMILY_SERIES = [
+    ("گوش دادن بدون قضاوت",
+     "حرف وسط نزنید و اجازه دهید جمله‌اش تمام شود. خلاصه‌ی حرف و احساس او را با کلمات خودتان "
+     "برگردانید: «پس این روزها خیلی خسته‌ای…». احساس را معتبر بدانید حتی اگر محتوای تجربه‌اش را "
+     "نمی‌پذیرید؛ و نصیحت فوری ندهید — اول شنیده‌شدن، بعد راه‌حل.",
+     "دوره‌ی همراه · TED Headlee · SAMHSA"),
+    ("زبان بدون انگ، درمان زودتر",
+     "«فردی با تجربه‌ی بیماری روانی» بگویید، نه برچسب. بیماری روانی اختلال مغزی است مثل دیابت؛ "
+     "پنهان‌کاری خانواده به قطع پنهانی دارو و مراجعه‌ی دیر ترجمه می‌شود. پاسخ کوتاه و مرزدار به "
+     "کنجکاوی اقوام بدهید — شرم لازم نیست.",
+     "دوره‌ی همراه · TED Delle · NIDA"),
+    ("برنامه‌ی ایمنی خانواده",
+     "پیش از بحران بنویسید: علائم هشدارِ مخصوص بیمار شما + اقدام‌های توافق‌شده + نقش هر عضو + "
+     "شماره‌ها (اورژانس ۱۱۵ · اورژانس اجتماعی ۱۲۳ · خط خودکشی ۱۴۸۰). وسایل خطرناک از قبل قفل "
+     "شوند و در اوج بحران بحث منطقی ممنوع — ایمنی اول.",
+     "دوره‌ی همراه · TED Patel · WHO mhGAP"),
+    ("روان‌آموزشی: خانواده سپرِ بیمار است",
+     "مداخله‌ی خانواده در کنار دارو، خطر عود و بستری مجدد را به‌طور معنادار کم می‌کند. فضای "
+     "سرشار از انتقاد و دخالت بیش‌ازحد (هیجان بیان‌شده بالا) عود را بیشتر می‌کند؛ آرامش و مرزِ "
+     "واضح، محافظ است. تقصیر جست‌وجو نکنید — خانواده بخشی از درمان است، نه علت.",
+     "دوره‌ی همراه · TED Saks · NICE NG58"),
+    ("نظارت بر دارو: دو قانون طلایی",
+     "۱) هیچ تغییری در دوز یا ساعت بدون پزشک؛ ۲) هیچ دارویی ناگهانی قطع نشود. اثر کامل "
+     "ضدروان‌پریشی‌ها ۲ تا ۶ هفته زمان می‌برد. تب + سفتی عضله + گیجی = اورژانس همان روز. "
+     "وزن و قند خون را پایش و گزارش کنید.",
+     "دوره‌ی همراه · TED Insel · FDA MedWatch"),
+    ("خودکشی: بپرسید، تنها نگذارید",
+     "مستقیم و آرام بپرسید: «آیا به آسیب زدن به خودت فکر می‌کنی؟» — پرسیدن خطر را بیشتر "
+     "نمی‌کند. حوصل‌جمع‌کردن وسایل، خداحافظی‌های عجیب و «دیگر زحمت نمی‌کشم» نشانه‌های هشدارند. "
+     "در خطر فوری: تنها نگذارید و تماس بگیرید — ۱۱۵ · ۱۲۳ · ۱۴۸۰.",
+     "دوره‌ی همراه · TED Briggs · CDC · WHO"),
+]
+
+
 def _channel_promo() -> str:
     """لینک کانال برای دعوت دیگران (در پیام‌ها و پست‌های کانال)."""
     if not TELEGRAM_CHANNEL_ID:
@@ -184,6 +218,15 @@ def critical_post_of_day() -> str:
     day = time.localtime().tm_yday
     title, body, source = CRITICAL_SERIES[(day // 3) % len(CRITICAL_SERIES)]
     return (f"⚠️ *آموزش حیاتی | {title}*\n\n{body}\n\n📖 منبع: {source}"
+            f"{_channel_promo()}\n{DISCLAIMER}")
+
+
+def family_post_of_day() -> str:
+    day = time.localtime().tm_yday
+    title, body, source = FAMILY_SERIES[(day // 3) % len(FAMILY_SERIES)]
+    return (f"👨‍👩‍👦 *آموزش خانواده | {title}*\n\n{body}\n\n"
+            "🎬 درس کامل این موضوع (ویدیو با زیرنویس فارسی + درس‌نامه + آزمون) در ربات — /training"
+            f"\n\n📖 منبع: {source}"
             f"{_channel_promo()}\n{DISCLAIMER}")
 
 
@@ -569,13 +612,18 @@ async def post_to_channel(bot, text: str) -> None:
 
 
 async def job_daily_tip(context: ContextTypes.DEFAULT_TYPE) -> None:
-    """پست آموزشی روزانه به کانال (۹ صبح تهران) — هر سومین روز از سری حیاتی."""
+    """پست آموزشی روزانه به کانال (۹ صبح تهران) — چرخه‌ی ۳روزه: حیاتی → خانواده → نکته."""
     try:
-        critical_day = time.localtime().tm_yday % 3 == 0
-        text = critical_post_of_day() if critical_day else tip_of_day()
+        phase = time.localtime().tm_yday % 3
+        if phase == 0:
+            text = critical_post_of_day()
+        elif phase == 1:
+            text = family_post_of_day()
+        else:
+            text = tip_of_day()
         await post_to_channel(context.bot, text)
         log.info("پست آموزشی روزانه به کانال ارسال شد (%s).",
-                 "سری حیاتی" if critical_day else "نکته‌ی روز")
+                 "سری حیاتی" if phase == 0 else ("سری خانواده" if phase == 1 else "نکته‌ی روز"))
     except Exception as e:
         log.warning("ارسال پست آموزشی به کانال ناموفق: %s", e)
 
@@ -861,6 +909,16 @@ async def on_train_module(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode="Markdown")
         except Exception as e:
             log.warning("ارسال ویدیوی ماژول %s ناموفق: %s", mid, e)
+    # ---- درس‌نامه‌ی ماژول (پیش از آزمون) ----
+    lesson = module.get("lesson") or []
+    if lesson:
+        ltext = (f"📖 *درس‌نامه‌ی «{module['title']}»*\n\n"
+                 + "\n".join(f"▫️ {b}" for b in lesson)
+                 + "\n\n💠 همین نکته‌ها را در آزمون ۱۰ پرسشی زیر می‌بینید.")
+        try:
+            await update.effective_message.reply_text(ltext, parse_mode="Markdown")
+        except Exception:
+            await update.effective_message.reply_text(ltext)
     await _ask_training_question(update, context, module, first=True)
 
 
@@ -889,6 +947,23 @@ async def on_train_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     st["answers"].append(oi)
     st["qi"] = qi + 1
     await q.answer()
+    # ---- بازخورد فوری: نتیجه + پاسخ درست + تحلیل آموزشی + امتیاز جاری ----
+    question = module["quiz"][qi]
+    correct = (oi == question["a"])
+    ok_so_far = sum(1 for i, a in enumerate(st["answers"])
+                    if i < len(module["quiz"]) and a == module["quiz"][i]["a"])
+    done_so_far = len(st["answers"])
+    if correct:
+        head = "✅ درست!"
+    else:
+        head = f"❌ نادرست — پاسخ درست:\n«{question['o'][question['a']]}»"
+    fb = (f"{head}\n"
+          f"💡 {question.get('e', '')}\n"
+          f"📊 امتیاز فعلی: {ok_so_far} از {done_so_far}")
+    try:
+        await q.message.edit_text(fb)
+    except Exception:
+        pass  # پیام قدیمی/غیرقابل ویرایش — بازخورد در ادامه می‌آید
     await _ask_training_question(update, context, module)
 
 
@@ -898,6 +973,10 @@ async def _finish_training(update: Update, context: ContextTypes.DEFAULT_TYPE, m
     ok = sum(1 for i, a in enumerate(answers) if i < len(quiz) and a == quiz[i]["a"])
     total = len(quiz)
     score = round(100 * ok / total) if total else 0
+    wrong = [str(i + 1) for i, a in enumerate(answers)
+             if i < len(quiz) and a != quiz[i]["a"]]
+    review = ("\n\n🔁 برای مرور: پرسش‌های " + "، ".join(wrong)
+              + " — تحلیل هرکدام زیر همان پرسش آمده است.") if wrong else ""
     if score >= 80:
         prog = _academy_progress(context)
         prog[module["id"]] = score
@@ -909,13 +988,15 @@ async def _finish_training(update: Update, context: ContextTypes.DEFAULT_TYPE, m
             text += ("\n\n🎉 تبریک! همه‌ی ماژول‌های *دوره‌ی آموزش همراه* را گذراندید.\n"
                      "برای دریافت گواهی با کد اعتبارسنجی، از بخش آکادمی سایت مرکز اقدام کنید:\n"
                      + SITE_ACADEMY_URL)
+        text += review
         if TELEGRAM_CHANNEL_ID:
             text += "\n\n📢 کانال آموزش روزانه: " + channel_link()
         await send_long(update, text, reply_markup=MAIN_KEYBOARD, parse_mode="Markdown")
     else:
         await update.effective_message.reply_text(
-            f"📚 نمره: {ok} از {total} درست — حداقل ۸۰٪ لازم است (۸ از ۱۰).\n"
-            "منبع را دوباره مرور کنید و ماژول را تکرار کنید:",
+            f"📚 نمره: {ok} از {total} درست — حداقل ۸۰٪ لازم است (۸ از ۱۰)."
+            f"{review}\n"
+            "🎬 ویدیو و 📖 درس‌نامه را دوباره مرور کنید و ماژول را تکرار کنید:",
             reply_markup=InlineKeyboardMarkup(
                 [[InlineKeyboardButton("🔄 تلاش دوباره", callback_data=f"train:{module['id']}")]]))
 
