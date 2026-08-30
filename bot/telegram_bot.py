@@ -25,7 +25,7 @@ import urllib.parse
 import urllib.request
 import store
 from scenarios import local_eval
-from datetime import datetime
+from datetime import datetime, timedelta
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("protocol-bot")
@@ -72,8 +72,12 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKe
 
 try:
     from caregiver_quiz import CAREGIVER_MODULES, SITE_ACADEMY_URL
+    from patient_academy import PATIENT_MODULES
 except ImportError:  # اجرا/ایمپورت از ریشه‌ی مخزن
     from bot.caregiver_quiz import CAREGIVER_MODULES, SITE_ACADEMY_URL
+    from bot.patient_academy import PATIENT_MODULES
+
+ALL_MODULES = CAREGIVER_MODULES + PATIENT_MODULES
 try:
     from scenarios import (SCENARIOS, SPECIALIST_LABELS, COST_QUESTIONS,
                            COST_TIERS, build_eval_prompt)
@@ -450,6 +454,52 @@ TEAM_SERIES = [
 ]
 
 
+PATIENT_SERIES = [
+    ("شروع بهبودی: شجاعانه‌ترین تصمیم",
+     "تصمیمِ ماندن در درمان، شجاعانه‌ترین کاری است که این روزها انجام داده‌ای. بهبودی خط "
+     "راست نیست؛ زیگزاگ است — و هر روزِ ادامه‌دادن، خودش پیروزی است.",
+     "دوره‌ی خودِ من · TED Delle · SAMHSA",
+     ["نقش_بیمار", "مراقبت_از_خود"],
+     "امروز به خودت چه قول کوچکی دادی؟"),
+    ("وسوسه می‌آید و می‌رود",
+     "وسوسه مثل موج است: می‌آید، اوج می‌گیرد و می‌رود — معمولاً در کمتر از نیم‌ساعت. "
+     "مأموریت تو فقط «ساختن فاصله» است: تماس با یک آدم امن، دور کردن محرک‌ها، نفس عمیق.",
+     "دوره‌ی خودِ من · پروتکل کاهش آسیب",
+     ["نقش_بیمار", "ترک_و_مصرف"],
+     "طولانی‌ترین موجِ وسوسه‌ات چند دقیقه طول کشیده؟"),
+    ("دارو و تو: هم‌تیمی دکترت",
+     "حالِ خوبِ این روزها، خودِ اثر داروست؛ قطعِ خودسرانه یعنی دعوت‌نامه‌ی عود. عارضه‌ی "
+     "اذیت‌کننده را گزارش کن — تقریباً همیشه راه‌حل دارد.",
+     "دوره‌ی خودِ من · TED Insel · FDA",
+     ["نقش_بیمار", "دارو_و_پایش"],
+     "چه چیزی پیروی از دارو را برایت سخت‌تر می‌کند؟"),
+    ("روز بد ≠ شکست",
+     "روزهای بد و حتی لغزش، پایان مسیر نیستند؛ سیگنالند — یعنی جای درمان و حمایت را "
+     "بازبینی کن. خودت را سرزنش نکن؛ به تیم درمان و یک آدم امن خبر بده.",
+     "دوره‌ی خودِ من · پروتکل کاهش آسیب",
+     ["نقش_بیمار", "مراقبت_از_خود"],
+     "بعد از آخرین روز سخت، چه کسی کنارت ماند؟"),
+    ("خواب: سپرِ نامرئیِ تو",
+     "بی‌خوابی هم علامت هشدار است هم تشدیدکننده. نظم خواب = داروی رایگان: ساعت ثابت "
+     "خواب، نور کم در شب، کافئین نزدیک شب نه.",
+     "دوره‌ی خودِ من · پروتکل",
+     ["نقش_بیمار", "علائم_هشدار"],
+     "امشب سر چند می‌خوابی؟"),
+    ("تنهایی را کم کن",
+     "انزوا، خوراکِ نشانه‌ها و وسوسه است. یک گروه همتا، یک آدم امن، یا حتی گفت‌وگوی "
+     "کوتاه روزانه — اتصال، سپرِ توست.",
+     "دوره‌ی خودِ من · SAMHSA",
+     ["نقش_بیمار", "خانواده_و_همراه"],
+     "امروز با کسی حرف زدی؟"),
+    ("ماندن، هر روز",
+     "فکرهای تاریک می‌آیند و می‌روند؛ تو می‌مانی. اگر شبِ سختی داشتی: خط ۱۴۸۰ و "
+     "اورژانس اجتماعی ۱۲۳ شبانه‌روزی‌اند. هر روز لازم نیست قهرمان باشی — ماندن خودش قهرمانی است.",
+     "دوره‌ی خودِ من · TED Briggs · CDC",
+     ["نقش_بیمار", "پیشگیری_از_خودکشی"],
+     "چه چیزی تو را همین امروز نگه داشت؟"),
+]
+
+
 POLLS = [
     ("پرسیدن مستقیم درباره‌ی خودکشی چه اثری دارد؟",
      ["خطر را بیشتر می‌کند", "خطر را بیشتر نمی‌کند", "فقط متخصص باید بپرسد", "بهتر است موضوع عوض شود"],
@@ -516,6 +566,13 @@ def family_post_of_day() -> str:
     entry = FAMILY_SERIES[(day // 6) % len(FAMILY_SERIES)]
     text = _render_channel_post("👨‍👩‍👦 آموزش خانواده", entry)
     return (text + "\n\n🎬 درس کامل این موضوع (ویدیو با زیرنویس فارسی + درس‌نامه + آزمون) در ربات — /training")
+
+
+def patient_post_of_day() -> str:
+    day = time.localtime().tm_yday
+    entry = PATIENT_SERIES[(day // 7) % len(PATIENT_SERIES)]
+    text = _render_channel_post("🧍 برای خودِ شما", entry)
+    return (text + "\n\n🎬 درس‌های «دوره‌ی خودِ من» (ویدیو با زیرنویس فارسی + آزمون) در ربات — /training")
 
 
 def tip_of_day(offset: int = 0) -> str:
@@ -1039,10 +1096,11 @@ async def job_daily_tip(context: ContextTypes.DEFAULT_TYPE) -> None:
                 is_anonymous=True)
             log.info("نظرسنجی آموزشی هفتگی به کانال ارسال شد.")
             return
-        phase = tm.tm_yday % 6
+        phase = tm.tm_yday % 7
         post, label = [
             (critical_post_of_day, "سری حیاتی"),
             (family_post_of_day, "سری خانواده"),
+            (patient_post_of_day, "سری بیمار"),
             (tip_of_day, "نکته‌ی روز"),
             (daily_news_post, "خبر علمی"),
             (work_post_of_day, "کار و درآمد"),
@@ -1282,21 +1340,33 @@ def _academy_progress(context: ContextTypes.DEFAULT_TYPE) -> dict:
     return context.user_data.setdefault("academy", {})
 
 
+def _active_modules(context: ContextTypes.DEFAULT_TYPE) -> list:
+    """دوره‌ی فعال بر اساس نقش: بیمار → دوره‌ی خودش، بقیه → دوره‌ی همراه."""
+    return PATIENT_MODULES if get_role(context) == "patient" else CAREGIVER_MODULES
+
+
 async def cmd_training(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    modules = _active_modules(context)
     prog = _academy_progress(context)
-    done = sum(1 for m in CAREGIVER_MODULES if m["id"] in prog)
-    ordered = sorted(CAREGIVER_MODULES, key=lambda m: not m.get("critical"))
+    done = sum(1 for m in modules if m["id"] in prog)
+    ordered = sorted(modules, key=lambda m: not m.get("critical"))
+    is_patient = modules is PATIENT_MODULES
     rows = []
     for m in ordered:
         mark = ("✅ " if m["id"] in prog else ("⚠️ " if m.get("critical") else "▫️ "))
         rows.append([InlineKeyboardButton(mark + m["title"][:38],
                                           callback_data=f"train:{m['id']}")])
+    head = ("🧍 *دوره‌ی خودِ من — ویژه‌ی شما*\n\n"
+            "ساده، امیدبخش و از زبان خودتان؛ هر درس یک ویدیو با زیرنویس فارسی + درس‌نامه + آزمون ۱۰ پرسشی است."
+            if is_patient else
+            "🎓 *دوره‌ی آموزش همراه*\n\n"
+            "هر ماژول شامل 🎬 ویدیوی قابل پخش در تلگرام + آزمون ۱۰ پرسشی است.")
     await update.effective_message.reply_text(
-        "🎓 *دوره‌ی آموزش همراه*\n\n"
-        f"پیشرفت شما: {done} از {len(CAREGIVER_MODULES)} ماژول\n\n"
-        "هر ماژول شامل 🎬 ویدیوی قابل پخش در تلگرام + آزمون ۱۰ پرسشی است. "
+        head + "\n\n"
+        f"پیشرفت شما: {done} از {len(modules)} ماژول\n\n"
         "⚠️ بخش‌های نشان‌دار (حیاتی) اولویت اول دارند. قبولی = حداقل ۸۰٪ (۸ از ۱۰).\n"
-        "پس از تکمیل همه، گواهی با کد اعتبارسنجی از سایت مرکز صادر می‌شود.",
+        + ("پس از تکمیل همه، پیام جشن خودتان را می‌گیرید 🌟" if is_patient else
+           "پس از تکمیل همه، گواهی با کد اعتبارسنجی از سایت مرکز صادر می‌شود."),
         reply_markup=InlineKeyboardMarkup(rows), parse_mode="Markdown")
 
 
@@ -1335,7 +1405,7 @@ async def _ask_training_question(update: Update, context: ContextTypes.DEFAULT_T
 async def on_train_module(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     mid = (q.data or "").split(":", 1)[1]
-    module = next((m for m in CAREGIVER_MODULES if m["id"] == mid), None)
+    module = next((m for m in ALL_MODULES if m["id"] == mid), None)
     if module is None:
         await q.answer("ماژول یافت نشد.")
         return
@@ -1385,7 +1455,7 @@ async def on_train_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if qi != st.get("qi") or mid != st.get("mid"):
         await q.answer("این پرسش قدیمی است.")
         return
-    module = next((m for m in CAREGIVER_MODULES if m["id"] == mid), None)
+    module = next((m for m in ALL_MODULES if m["id"] == mid), None)
     if module is None:
         await q.answer("ماژول یافت نشد.")
         return
@@ -1425,14 +1495,20 @@ async def _finish_training(update: Update, context: ContextTypes.DEFAULT_TYPE, m
     if score >= 80:
         prog = _academy_progress(context)
         prog[module["id"]] = score
-        done = sum(1 for m in CAREGIVER_MODULES if m["id"] in prog)
+        track = PATIENT_MODULES if module["id"].startswith("patient-") else CAREGIVER_MODULES
+        done = sum(1 for m in track if m["id"] in prog)
         text = (f"✅ *ماژول «{module['title']}» تکمیل شد!*\n\n"
                 f"نمره: {score} از ۱۰۰ ({ok} از {total} درست)\n"
-                f"پیشرفت دوره: {done} از {len(CAREGIVER_MODULES)} ماژول")
-        if done == len(CAREGIVER_MODULES):
-            text += ("\n\n🎉 تبریک! همه‌ی ماژول‌های *دوره‌ی آموزش همراه* را گذراندید.\n"
-                     "برای دریافت گواهی با کد اعتبارسنجی، از بخش آکادمی سایت مرکز اقدام کنید:\n"
-                     + SITE_ACADEMY_URL)
+                f"پیشرفت دوره: {done} از {len(track)} ماژول")
+        if done == len(track):
+            if track is PATIENT_MODULES:
+                text += ("\n\n🎉 آفرین — همه‌ی درس‌های «دوره‌ی خودِ من» را گذراندید!\n"
+                         "این بردِ بزرگِ خودتان است. هر هفته یک‌بار مرور کنید تا تازه بماند.\n"
+                         "☀️ چک‌ین روزانه با /daily — و ما همیشه اینجاییم.")
+            else:
+                text += ("\n\n🎉 تبریک! همه‌ی ماژول‌های *دوره‌ی آموزش همراه* را گذراندید.\n"
+                         "برای دریافت گواهی با کد اعتبارسنجی، از بخش آکادمی سایت مرکز اقدام کنید:\n"
+                         + SITE_ACADEMY_URL)
         text += review
         if TELEGRAM_CHANNEL_ID:
             text += "\n\n📢 کانال آموزش روزانه: " + channel_link()
@@ -1479,10 +1555,241 @@ async def on_role_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["role_explicit"] = True
     label, desc = ROLE_OPTIONS[key]
     await q.answer("ثبت شد ✅")
+    # چک‌ین روزانه برای بیمار: روشن‌کردن خودکار
+    daily_note = ""
+    if key == "patient":
+        try:
+            if _enable_daily(context.application, update.effective_user.id):
+                daily_note = ("\n\n☀️ برای نقش بیمار، *چک‌ین روزانه* را روشن کردم:\n"
+                              "🕘 صبح ۹: یادآور دارو + چک حال | 🌙 شب ۲۱: چک وسوسه\n"
+                              "با /daily می‌توانی وضعیتش را ببینی یا خاموشش کنی.")
+        except Exception as e:
+            log.warning("فعال‌سازی چک‌ین روزانه ناموفق: %s", e)
     if q.message is not None:
         await q.message.reply_text(
-            f"✅ نقش شما: *{label}*\n{desc}\n\nاز این پس پاسخ‌ها برای همین نقش تنظیم می‌شود.\n🔗 با /invite می‌توانید لینک دعوت با همین نقش جدید بسازید.",
+            f"✅ نقش شما: *{label}*\n{desc}\n\nاز این پس پاسخ‌ها برای همین نقش تنظیم می‌شود.\n"
+            "🔗 با /invite می‌توانید لینک دعوت با همین نقش جدید بسازید." + daily_note,
             parse_mode="Markdown")
+
+
+# ---------- چک‌ین روزانه‌ی بیمار (دارو + حال + وسوسه) ----------
+DAILY_MOTIVATION = [
+    "هر روز لازم نیست قهرمان باشی؛ بعضی روزها فقط «ماندن» خودش قهرمانی است. 🌱",
+    "تصمیمِ امروزت برای درمان، شجاعانه‌ترین کار هفته‌ی توست. 💪",
+    "موج می‌آید و می‌رود؛ تو قایقی هستی که یاد گرفته بالای موج بماند. 🌊",
+    "یک قدم کوچک امروز، از یک برنامه‌ی بزرگ فردا بیشتر می‌ارزد. 👣",
+    "خوابِ منظم، ساکت‌ترین دوستِ درمانِ توست. 🌙",
+    "روزهای خوب و بد هر دو بخشی از مسیرند؛ مسیر را دیدی که ادامه دادی. 🛤",
+    "به خودت همان‌قدر مهربانی کن که به بهترین دوستت می‌کنی. ❤️",
+    "لغزش یعنی سیگنال، نه شکست؛ دوباره بلند شو، همان‌قدر که تا حالا بلند شدی. 🔄",
+    "تو بیش از یک برچسب هستی: تو آدمی با رؤیا و مسیر خودت. ✨",
+    "درمان گرفتن مثل نفس کشیدن است؛ حقِ توست، نه لطفِ کسی. 🤝",
+    "هر شب که سالم به تخت می‌رسی، یک مسابقه را برنده شده‌ای. 🏅",
+    "کسی که مسیر را رفته، می‌داند چقدر راه آورده‌ای. ما می‌دانیم. 🌟",
+    "استراحت هم بخشی از درمان است؛ امروز اگر فقط استراحت کردی، کافی بود. 🍃",
+    "آینده با هر دوز سرِ وقتی که می‌خوری، کمی روشن‌تر می‌شود. 💊",
+]
+
+MOOD_LABELS = ["😊 خوب", "😐 متوسط", "😞 بد"]
+URGE_LABELS = ["💪 کم بود", "🟡 متوسط", "🔥 زیاد بود"]
+
+
+def _daily_log(context: ContextTypes.DEFAULT_TYPE) -> dict:
+    return context.user_data.setdefault("daily_log", {})
+
+
+def _daily_streak(context: ContextTypes.DEFAULT_TYPE) -> int:
+    log = _daily_log(context)
+    streak = 0
+    day = datetime.now()
+    if day.strftime("%Y%m%d") not in log:
+        day = day - timedelta(days=1)
+    while day.strftime("%Y%m%d") in log:
+        streak += 1
+        day = day - timedelta(days=1)
+    return streak
+
+
+def _register_daily_jobs(app, uid: int) -> None:
+    if app.job_queue is None:
+        return
+    from datetime import time as dtime
+    import zoneinfo
+    tz = zoneinfo.ZoneInfo("Asia/Tehran")
+    if not app.job_queue.get_jobs_by_name(f"daily_m_{uid}"):
+        app.job_queue.run_daily(_job_daily_morning, time=dtime(9, 0, tzinfo=tz),
+                                name=f"daily_m_{uid}", data=uid)
+    if not app.job_queue.get_jobs_by_name(f"daily_e_{uid}"):
+        app.job_queue.run_daily(_job_daily_evening, time=dtime(21, 0, tzinfo=tz),
+                                name=f"daily_e_{uid}", data=uid)
+
+
+def _enable_daily(app, uid: int) -> bool:
+    """فعال‌سازی چک‌ین روزانه برای یک کاربر (ثبت + زمان‌بندی)."""
+    users = app.bot_data.setdefault("daily_users", {})
+    if uid in users:
+        return False
+    users[uid] = True
+    _register_daily_jobs(app, uid)
+    return True
+
+
+def _disable_daily(app, uid: int) -> bool:
+    users = app.bot_data.get("daily_users") or {}
+    if uid not in users:
+        return False
+    users.pop(uid, None)
+    if app.job_queue is not None:
+        for name in (f"daily_m_{uid}", f"daily_e_{uid}"):
+            for job in app.job_queue.get_jobs_by_name(name):
+                job.schedule_removal()
+    return True
+
+
+def _today_key() -> str:
+    return datetime.now().strftime("%Y%m%d")
+
+
+async def _job_daily_morning(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """صبح (۹ تهران): یادآور دارو + چک حال."""
+    uid = context.job.data
+    mot = DAILY_MOTIVATION[time.localtime().tm_yday % len(DAILY_MOTIVATION)]
+    text = ("☀️ *صبح بخیر!*\n\n"
+            "💊 وقت داروهات — حتی وقتی حالت خوب است؛ حالِ خوب، اثرِ همان داروست.\n\n"
+            "حالت الان چطور است؟")
+    kb = InlineKeyboardMarkup([[InlineKeyboardButton(lbl, callback_data=f"dchk:m:{i}:{_today_key()}")
+                                for i, lbl in enumerate(MOOD_LABELS)]])
+    try:
+        await context.bot.send_message(uid, text, parse_mode="Markdown", reply_markup=kb)
+        await context.bot.send_message(uid, f"🌟 {mot}")
+    except Exception as e:
+        log.warning("چک‌ین صبح برای %s ناموفق: %s", uid, e)
+
+
+async def _job_daily_evening(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """شب (۲۱ تهران): چک وسوسه + پیام انگیزشی."""
+    uid = context.job.data
+    text = ("🌙 *شب بخیر*\n\n"
+            "قبل از خواب، یک چک صادقانه با خودت:\n"
+            "امشب وسوسه‌ی مصرف چقدر بود؟")
+    kb = InlineKeyboardMarkup([[InlineKeyboardButton(lbl, callback_data=f"dchk:e:{i}:{_today_key()}")
+                                for i, lbl in enumerate(URGE_LABELS)]])
+    try:
+        await context.bot.send_message(uid, text, parse_mode="Markdown", reply_markup=kb)
+        mot = DAILY_MOTIVATION[(time.localtime().tm_yday + 5) % len(DAILY_MOTIVATION)]
+        await context.bot.send_message(uid, f"🌟 {mot}\n\n💤 خوابِ منظم، سپرِ فردایت است.")
+    except Exception as e:
+        log.warning("چک‌ین شب برای %s ناموفق: %s", uid, e)
+
+
+async def on_daily_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ثبت پاسخ چک‌ین روزانه + واکنش هوشمند."""
+    q = update.callback_query
+    try:
+        _, kind, val, datekey = (q.data or "").split(":")
+        val = int(val)
+    except ValueError:
+        await q.answer()
+        return
+    log = _daily_log(context)
+    entry = log.setdefault(datekey, {})
+    entry[kind] = val
+    entry["ts"] = datetime.now().isoformat(timespec="minutes")
+    await q.answer("ثبت شد ✅")
+    streak = _daily_streak(context)
+    if kind == "m":
+        if val == 0:
+            reply = (f"خوشحالم که حالت خوب است! 🌞 (روزِ {fa_digits(streak)} چک‌ینِ پیوسته)\n"
+                     "این حس را یادداشت کن — روزهای بد، یادآوری‌اش را لازم دارند.")
+        elif val == 1:
+            reply = ("روزهای متوسط هم بخشی از مسیرند. 🌤\n"
+                     "امروز فقط سه چیز: دارو سر وقت، آب کافی، یک قدم کوچک (مثلاً ۱۰ دقیقه پیاده‌روی).")
+        else:
+            bad_days = sum(1 for i in range(3)
+                           if (log.get((datetime.now() - timedelta(days=i)).strftime("%Y%m%d"), {})
+                               or {}).get("m") == 2)
+            reply = ("ممنون که صادق بودی — همین گفتن، خودش قدرت است. 🤍\n"
+                     "وقتی حال بد چند روز ادامه دارد، زنگ خطرِ زودهنگام است:\n"
+                     "• خواب و دارو را مرتب نگه دار\n"
+                     "• امروز با درمانگرت یا یک آدم امن حرف بزن\n"
+                     "• با /risk یک پایش سریع ثبت کن")
+            if bad_days >= 2:
+                reply += ("\n\n⚠️ چند روز پشت‌سرهم سخته — لطفاً همین امروز با تیم درمان یا خط ۱۴۸۰ "
+                          "تماس بگیر؛ کمک‌خواستن نشانه‌ی قوت است.")
+    else:
+        if val == 0:
+            reply = f"💪 عالی! وسوسه‌ی کم یعنی درمان و تلاشت کار می‌کند. (روزِ {fa_digits(streak)} پیوسته)"
+        elif val == 1:
+            reply = ("وسوسه‌ی متوسط طبیعی است؛ برای امشب: دور کردن محرک‌ها، یک تماس کوتاه، "
+                     "دوش آب گرم و خواب سر وقت. 🛁")
+        else:
+            reply = ("🔥 وسوسه‌ی زیاد می‌آید و می‌رود — مأموریتِ تو فقط «ساختن فاصله» است:\n"
+                     "• همین حالا با یک آدم امن تماس بگیر یا پیام بده\n"
+                     "• وسایل و محرک‌ها را از دسترس دور کن\n"
+                     "• موجِ شدید معمولاً کمتر از نیم‌ساعت طول می‌کشد؛ نفس عمیق: ۴ ثانیه دم، ۶ ثانیه بازدم\n"
+                     "• اگر خیلی سنگین شد: خط ۱۴۸۰ یا اورژانس اجتماعی ۱۲۳ — شبانه‌روزی\n\n"
+                     "درماندگیِ امشب، حکمِ فردا نیست. 🌅")
+    try:
+        await q.message.reply_text(reply, parse_mode="Markdown")
+    except Exception:
+        await q.message.reply_text(reply)
+
+
+async def cmd_daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """مدیریت چک‌ین روزانه: روشن/خاموش + گزارش روزها."""
+    app = context.application
+    uid = update.effective_user.id
+    users = app.bot_data.get("daily_users") or {}
+    if uid in users:
+        dlog = _daily_log(context)
+        streak = _daily_streak(context)
+        lines = ["☀️ *چک‌ین روزانه‌ی شما: روشن است*\n",
+                 f"🔥 چک‌ین پیوسته: {fa_digits(streak)} روز",
+                 "🕘 صبح ۹: یادآور دارو + چک حال | 🌙 شب ۲۱: چک وسوسه + پیام انگیزشی\n"]
+        recent = sorted(dlog.items(), key=lambda kv: kv[0], reverse=True)[:5]
+        if recent:
+            lines.append("آخرین روزها:")
+            for dk, e in recent:
+                m = MOOD_LABELS[e["m"]].split(" ", 1)[1] if "m" in e else "—"
+                u = URGE_LABELS[e["e"]].split(" ", 1)[1] if "e" in e else "—"
+                d = datetime.strptime(dk, "%Y%m%d")
+                jy, jm, jd = _gregorian_to_jalali(d.year, d.month, d.day)
+                lines.append(f"  • {fa_digits(str(jd))}/{fa_digits(f'{jm:02d}')} — حال: {m} | وسوسه: {u}")
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("⏸ خاموش‌کردن چک‌ین", callback_data="dailytgl:off")]])
+        await send_long(update, "\n".join(lines), reply_markup=kb, parse_mode="Markdown")
+    else:
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ روشن‌کردن چک‌ین روزانه", callback_data="dailytgl:on")]])
+        await send_long(
+            update,
+            "☀️ *چک‌ین روزانه: خاموش است*\n\n"
+            "با روشن‌کردنش، هر روز این دو پیام را می‌گیری:\n"
+            "🕘 صبح ۹ — یادآور دارو + «حالت چطور است؟»\n"
+            "🌙 شب ۲۱ — چک وسوسه + یک پیام انگیزشی\n\n"
+            "پاسخ‌هایت فقط برای خودت ذخیره می‌شود؛ روزهای سخت را زودتر می‌بینیم و همان‌جا کنارت هستیم.",
+            reply_markup=kb, parse_mode="Markdown")
+
+
+async def on_daily_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    action = (q.data or "").split(":", 1)[1]
+    app = context.application
+    uid = update.effective_user.id
+    if action == "on":
+        if _enable_daily(app, uid):
+            await q.answer("روشن شد ✅")
+            await q.message.reply_text(
+                "☀️ چک‌ین روزانه روشن شد!\n\n"
+                "🕘 هر روز صبح ۹ (تهران): یادآور دارو + چک حال\n"
+                "🌙 هر شب ۲۱: چک وسوسه + پیام انگیزشی\n\n"
+                "هر وقت بخواهی با /daily خاموشش کن.")
+        else:
+            await q.answer("از قبل روشن بود ✅")
+    else:
+        if _disable_daily(app, uid):
+            await q.answer("خاموش شد")
+            await q.message.reply_text("⏸ چک‌ین روزانه خاموش شد. هر وقت خواستی با /daily دوباره روشنش کن. 🌱")
+        else:
+            await q.answer("از قبل خاموش بود")
 
 
 # ---------- دعوت دیگران با نقش (لینک اختصاصی) ----------
@@ -1801,7 +2108,7 @@ async def _cost_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prog = context.user_data.get("academy") or {}
-    done_mod = sum(1 for m in CAREGIVER_MODULES if m["id"] in prog)
+    done_mod = sum(1 for m in _active_modules(context) if m["id"] in prog)
     lab = context.user_data.get("scenario_lab") or {}
     results = lab.get("results", {})
     scored = [v for v in results.values() if v is not None]
@@ -1853,7 +2160,7 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def _companion_points(uid: int, context: ContextTypes.DEFAULT_TYPE) -> int:
     """نمره‌ی ترکیبی: ماژول‌ها + میانگین سناریوها + تعداد پاسخ‌ها (حداکثر ~۱۰۰)."""
     prog = context.user_data.get("academy") or {}
-    mods = sum(1 for m in CAREGIVER_MODULES if m["id"] in prog)
+    mods = sum(1 for m in _active_modules(context) if m["id"] in prog)
     lab = context.user_data.get("scenario_lab") or {}
     results = [v for v in (lab.get("results") or {}).values() if v is not None]
     avg = sum(results) / len(results) if results else 0.0
@@ -1918,7 +2225,7 @@ async def cmd_archive(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------- بخش‌های حیاتی ----------
 async def cmd_critical(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prog = _academy_progress(context)
-    crit = [m for m in CAREGIVER_MODULES if m.get("critical")]
+    crit = [m for m in ALL_MODULES if m.get("critical")]
     parts = []
     for m in crit:
         done = "✅" if m["id"] in prog else "❌"
@@ -2091,6 +2398,15 @@ async def _post_init(app: Application) -> None:
     moved = store.migrate(app.user_data)
     if moved:
         log.info("مهاجرت آرشیو pickle به SQLite: %d ردیف.", moved)
+    # بازتنظیم چک‌ین روزانه‌ی کاربران فعال (پس از هر ری‌استارت)
+    try:
+        daily_users = app.bot_data.setdefault("daily_users", {})
+        for uid in list(daily_users):
+            _register_daily_jobs(app, uid)
+        if daily_users:
+            log.info("چک‌ین روزانه برای %d کاربر زمان‌بندی شد.", len(daily_users))
+    except Exception as e:
+        log.warning("زمان‌بندی چک‌ین روزانه ناموفق: %s", e)
     commands = [
         BotCommand("start", "شروع و معرفی ربات"),
         BotCommand("help", "راهنما"),
@@ -2108,6 +2424,7 @@ async def _post_init(app: Application) -> None:
         BotCommand("history", "روند پایش‌های قبلی شما"),
         BotCommand("about", "درباره‌ی ربات و منابع"),
         BotCommand("tags", "راهنمای هشتگ‌های کانال"),
+        BotCommand("daily", "چک‌ین روزانه: دارو + حال + وسوسه"),
         BotCommand("cancel", "لغو ارزیابی در جریان"),
     ]
     try:
@@ -2140,6 +2457,9 @@ def main():
         app.add_handler(CommandHandler("post_tip", cmd_post_tip))
         app.add_handler(CommandHandler("channel_status", cmd_channel_status))
     app.add_handler(CommandHandler("tags", cmd_tags))
+    app.add_handler(CommandHandler("daily", cmd_daily))
+    app.add_handler(CallbackQueryHandler(on_daily_check, pattern=r"^dchk:"))
+    app.add_handler(CallbackQueryHandler(on_daily_toggle, pattern=r"^dailytgl:"))
     app.add_handler(CallbackQueryHandler(on_risk_button, pattern=r"^risk:\d$"))
     app.add_handler(CallbackQueryHandler(on_role_button, pattern=r"^role:(patient|family|doctor)$"))
     app.add_handler(CallbackQueryHandler(on_section_button, pattern=r"^sec:\d+$"))
