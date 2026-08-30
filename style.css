@@ -23,6 +23,39 @@
   --radius: 16px;
 }
 
+/* =========================================================
+   نوار ساده‌ی بیمار — کم‌بار شناختی، همدلانه
+   ========================================================= */
+.patient-strip {
+  background: linear-gradient(135deg, #ecf6f6, #fdf8ef);
+  border-bottom: 1px solid var(--line);
+  padding: 18px 0;
+}
+.patient-strip-inner {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.patient-strip-text { max-width: 640px; line-height: 1.9; }
+.patient-strip-text strong { color: var(--teal-900); font-size: 1.02rem; display: block; }
+.patient-strip-text span { color: var(--body); font-size: .92rem; }
+.patient-strip-text a { color: var(--teal-700); font-weight: 700; }
+.patient-strip-sos {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-inline-start: 4px solid var(--rose);
+  border-radius: 12px;
+  padding: 12px 18px;
+  box-shadow: var(--shadow);
+}
+.patient-strip-sos span { display: block; color: var(--muted); font-size: .8rem; margin-bottom: 4px; }
+.patient-strip-sos strong { color: var(--rose); font-size: .95rem; }
+@media (max-width: 720px) {
+  .patient-strip-inner { flex-direction: column; align-items: flex-start; }
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html { scroll-behavior: smooth; }

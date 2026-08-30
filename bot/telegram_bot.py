@@ -970,6 +970,27 @@ BTN_REPORT = "📊 گزارش ارزشیابی"
 BTN_CRITICAL = "⚠️ بخش‌های حیاتی"
 BTN_ROLE = "👤 نقش من"
 
+BTN_DAILY = "☀️ چک‌ین روزانه"
+BTN_MY_LESSONS = "🎓 درس‌های من"
+BTN_SOS = "🆘 کمک فوری"
+
+# کیبورد ساده‌ی بیمار — طراحی بر پایه‌ی اصول درمان‌های دیجیتال تأییدشده (reSET/FDA):
+# گزینه‌ی کم، زبان ساده، تقویت مثبت، دسترسی یک‌ضربه‌ای به کمک.
+PATIENT_KEYBOARD = ReplyKeyboardMarkup(
+    [[BTN_DAILY, BTN_MY_LESSONS],
+     [BTN_TIP, BTN_SOS],
+     [BTN_ROLE, BTN_HELP]],
+    resize_keyboard=True,
+    is_persistent=True,
+    input_field_placeholder="سؤالت را ساده بنویس…",
+)
+
+
+def _kb_for(context: ContextTypes.DEFAULT_TYPE) -> ReplyKeyboardMarkup:
+    """کیبورد بر اساس نقش: بیمار → ساده، بقیه → کامل."""
+    return PATIENT_KEYBOARD if get_role(context) == "patient" else MAIN_KEYBOARD
+
+
 MAIN_KEYBOARD = ReplyKeyboardMarkup(
     [[BTN_RISK, BTN_CRITICAL],
      [BTN_TRAINING, BTN_SCENARIO],
@@ -991,6 +1012,27 @@ WELCOME = (
     "تا پاسخ‌ها متناسب شود.\n\n"
     "سؤال‌تان را بنویسید یا از دکمه‌های پایین صفحه استفاده کنید 👇\n\n"
     "⚠️ _من جایگزین پزشک نیستم؛ در وضعیت اورژانسی فوراً با خدمات درمانی تماس بگیرید._"
+)
+
+WELCOME_PATIENT = (
+    "سلام! 👋\n\n"
+    "من همراه خودت هستم — ساده و بی‌پیچیدگی.\n\n"
+    "☀️ هر روز دو پیام کوچک از من می‌گیری: صبح یادآور دارو، شب یک چکِ کوتاه.\n"
+    "🎓 درس‌های من: ویدیوهای کوتاه با زیرنویس فارسی + آزمون ساده.\n"
+    "💬 هر سؤالی داری همین‌جا بنویس؛ ساده جواب می‌گیری.\n"
+    "🆘 روزِ سختی بود؟ دکمه‌ی «کمک فوری» پایین صفحه همیشه هست.\n\n"
+    "⚠️ من جایگزین پزشک نیستم؛ در اورژانس: ۱۱۵ · ۱۲۳ · ۱۴۸۰"
+)
+
+HELP_PATIENT = (
+    "📖 *راهنمای سریع*\n\n"
+    "• هر متنی بنویس → پاسخ ساده می‌گیری\n"
+    "• ☀️ چک‌ین روزانه / /daily → دارو + حال + وسوسه\n"
+    "• 🎓 درس‌های من / /training → ویدیو + آزمون با تحلیل\n"
+    "• 📚 نکته امروز / /tip\n"
+    "• 🆘 کمک فوری → شماره‌های اورژانس\n"
+    "• 👤 نقش من / /role → اگر همراهِ بیماری هستی، از اینجا نقشت را عوض کن تا ابزارهای کامل همراه را ببینی\n\n"
+    "🔒 پاسخ‌های چک‌ین فقط برای خودت ذخیره می‌شود."
 )
 
 HELP_TEXT = (
@@ -1158,7 +1200,8 @@ async def cmd_channel_status(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 # ---------- دستورها ----------
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = WELCOME + (f"\n\n📢 کانال اخبار و آموزش روزانه: {channel_link()}" if TELEGRAM_CHANNEL_ID else "")
+    base = WELCOME_PATIENT if get_role(context) == "patient" else WELCOME
+    text = base + (f"\n\n📢 کانال اخبار و آموزش روزانه: {channel_link()}" if TELEGRAM_CHANNEL_ID else "")
     # لینک دعوت: t.me/bot?start=<rolecode>_<inviter_id> → نقش پیشنهادی معرف
     if context.args:
         m = re.match(r"^(pat|fam|doc)_(\d+)$", context.args[0])
@@ -1180,12 +1223,13 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"نقش فعلی شما: *{cur_label}*\n"
                 "اگر نقش درست نیست، هر زمانی با /role می‌توانید تغییرش دهید.")
     await update.effective_message.reply_text(text, parse_mode="Markdown",
-                                              reply_markup=MAIN_KEYBOARD)
+                                              reply_markup=_kb_for(context))
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.effective_message.reply_text(HELP_TEXT, parse_mode="Markdown",
-                                              reply_markup=MAIN_KEYBOARD)
+    text = HELP_PATIENT if get_role(context) == "patient" else HELP_TEXT
+    await update.effective_message.reply_text(text, parse_mode="Markdown",
+                                              reply_markup=_kb_for(context))
 
 
 async def cmd_about(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1195,7 +1239,7 @@ async def cmd_about(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_text(tip_of_day(), parse_mode="HTML",
-                                              reply_markup=MAIN_KEYBOARD)
+                                              reply_markup=_kb_for(context))
 
 
 async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1213,7 +1257,7 @@ async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cancelled.append("ارزشیابی هزینه")
     if cancelled:
         await update.effective_message.reply_text(
-            "لغو شد: " + "، ".join(cancelled) + " ✅", reply_markup=MAIN_KEYBOARD)
+            "لغو شد: " + "، ".join(cancelled) + " ✅", reply_markup=_kb_for(context))
     else:
         await update.effective_message.reply_text("ارزیابی در جریانی وجود ندارد.")
 
@@ -1269,13 +1313,17 @@ async def answer_question(update: Update, context: ContextTypes.DEFAULT_TYPE, qu
         if data:
             answer = _shorten_answer(data["answer"].rstrip())
             lines = [answer, ""]
-            src = data.get("source") or ""
-            if src:
-                lines.append(f"🧠 مدل پاسخ‌دهنده: {src}")
-            if srcs:
-                lines.append("📚 منابع دانش: " + "، ".join(s[:44] for s in srcs))
-            lines.append(DISCLAIMER)
-            await send_long(update, "\n".join(lines), reply_markup=MAIN_KEYBOARD)
+            if get_role(context) == "patient":
+                # بیمار: بدون متای فنی — فقط پاسخ + یادآوری کوتاه
+                lines.append(DISCLAIMER)
+            else:
+                src = data.get("source") or ""
+                if src:
+                    lines.append(f"🧠 مدل پاسخ‌دهنده: {src}")
+                if srcs:
+                    lines.append("📚 منابع دانش: " + "، ".join(s[:44] for s in srcs))
+                lines.append(DISCLAIMER)
+            await send_long(update, "\n".join(lines), reply_markup=_kb_for(context))
             return
     except Exception as e:
         log.warning("دستیار هوش مصنوعی در دسترس نیست (%s)؛ پاسخ از پروتکل محلی.", e)
@@ -1285,7 +1333,7 @@ async def answer_question(update: Update, context: ContextTypes.DEFAULT_TYPE, qu
         parts = [f"📚 *از پایگاه دانش محلی*\n({c.get('source', '—')})\n\n{(c.get('text') or '')[:600]}"
                  for c in ctx]
         await send_long(update, "\n\n———\n\n".join(parts) + "\n\n" + DISCLAIMER,
-                        reply_markup=MAIN_KEYBOARD)
+                        reply_markup=_kb_for(context))
     else:
         hit = await asyncio.to_thread(search_protocol, question)
         if hit:
@@ -1310,6 +1358,12 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lab = context.user_data.get("scenario_lab")
     if lab and lab.get("active") and lab.get("current"):
         return await _answer_scenario(update, context, text)
+    if text == BTN_DAILY:
+        return await cmd_daily(update, context)
+    if text == BTN_MY_LESSONS:
+        return await cmd_training(update, context)
+    if text == BTN_SOS:
+        return await cmd_sos(update, context)
     if text == BTN_RISK:
         return await cmd_risk(update, context)
     if text == BTN_TIP:
@@ -1512,7 +1566,7 @@ async def _finish_training(update: Update, context: ContextTypes.DEFAULT_TYPE, m
         text += review
         if TELEGRAM_CHANNEL_ID:
             text += "\n\n📢 کانال آموزش روزانه: " + channel_link()
-        await send_long(update, text, reply_markup=MAIN_KEYBOARD, parse_mode="Markdown")
+        await send_long(update, text, reply_markup=_kb_for(context), parse_mode="Markdown")
     else:
         await update.effective_message.reply_text(
             f"📚 نمره: {ok} از {total} درست — حداقل ۸۰٪ لازم است (۸ از ۱۰)."
@@ -1771,36 +1825,30 @@ async def on_daily_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
     streak = _daily_streak(context)
     if kind == "m":
         if val == 0:
-            reply = (f"خوشحالم که حالت خوب است! 🌞 (روزِ {fa_digits(streak)} چک‌ینِ پیوسته)\n"
-                     "این حس را یادداشت کن — روزهای بد، یادآوری‌اش را لازم دارند.")
+            reply = f"آفرین! 🌞 ({fa_digits(streak)} روز پیوسته) — همین‌طور ادامه بده."
         elif val == 1:
-            reply = ("روزهای متوسط هم بخشی از مسیرند. 🌤\n"
-                     "امروز فقط سه چیز: دارو سر وقت، آب کافی، یک قدم کوچک (مثلاً ۱۰ دقیقه پیاده‌روی).")
+            reply = ("روزهای متوسط طبیعی‌اند 🌤\n"
+                     "امروز فقط سه چیز: دارو سر وقت، آب کافی، یک قدم کوچک.")
         else:
-            bad_days = sum(1 for i in range(3)
-                           if (log.get((datetime.now() - timedelta(days=i)).strftime("%Y%m%d"), {})
-                               or {}).get("m") == 2)
-            reply = ("ممنون که صادق بودی — همین گفتن، خودش قدرت است. 🤍\n"
-                     "وقتی حال بد چند روز ادامه دارد، زنگ خطرِ زودهنگام است:\n"
-                     "• خواب و دارو را مرتب نگه دار\n"
-                     "• امروز با درمانگرت یا یک آدم امن حرف بزن\n"
-                     "• با /risk یک پایش سریع ثبت کن")
-            if bad_days >= 2:
-                reply += ("\n\n⚠️ چند روز پشت‌سرهم سخته — لطفاً همین امروز با تیم درمان یا خط ۱۴۸۰ "
-                          "تماس بگیر؛ کمک‌خواستن نشانه‌ی قوت است.")
+            reply = ("ممنون که گفتی — همینِ گفتن، قدرت است 🤍\n"
+                     "امروز با یک نفر حرف بزن و با /risk یک ثبت کوتاه بکن.\n"
+                     "اگر چند روز شد همین‌طور، لطفاً با تیم درمان یا ۱۴۸۰ صحبت کن — کمک‌خواستن قوت است.")
     else:
         if val == 0:
-            reply = f"💪 عالی! وسوسه‌ی کم یعنی درمان و تلاشت کار می‌کند. (روزِ {fa_digits(streak)} پیوسته)"
+            reply = f"عالی! 💪 ({fa_digits(streak)} روز پیوسته)"
         elif val == 1:
-            reply = ("وسوسه‌ی متوسط طبیعی است؛ برای امشب: دور کردن محرک‌ها، یک تماس کوتاه، "
-                     "دوش آب گرم و خواب سر وقت. 🛁")
+            reply = ("وسوسه می‌آید و می‌رود 🌊\n"
+                     "امشب: یک تماس کوتاه، دوش آب گرم، خواب سر وقت.")
         else:
-            reply = ("🔥 وسوسه‌ی زیاد می‌آید و می‌رود — مأموریتِ تو فقط «ساختن فاصله» است:\n"
-                     "• همین حالا با یک آدم امن تماس بگیر یا پیام بده\n"
-                     "• وسایل و محرک‌ها را از دسترس دور کن\n"
-                     "• موجِ شدید معمولاً کمتر از نیم‌ساعت طول می‌کشد؛ نفس عمیق: ۴ ثانیه دم، ۶ ثانیه بازدم\n"
-                     "• اگر خیلی سنگین شد: خط ۱۴۸۰ یا اورژانس اجتماعی ۱۲۳ — شبانه‌روزی\n\n"
-                     "درماندگیِ امشب، حکمِ فردا نیست. 🌅")
+            reply = ("موج بلند است — فقط فاصله بساز:\n"
+                     "۱. همین حالا با یک نفر تماس بگیر\n"
+                     "۲. وسایل و محرک‌ها را دور کن\n"
+                     "۳. نفس عمیق: ۴ ثانیه دم، ۶ ثانیه بازدم\n"
+                     "اگر خیلی سنگین شد: ۱۴۸۰ یا ۱۲۳ — شبانه‌روزی\n\n"
+                     "امشب مهم نیست؛ فردا روزِ تازه‌ای است 🌅")
+    # تقویت مثبت در نقاط عطف (الهام از مدیریت تحکیم در درمان‌های دیجیتال FDA)
+    if streak in (7, 14, 30, 60, 100, 365):
+        reply += f"\n\n🎉 {fa_digits(streak)} روز پیوسته! این خودش یک قهرمانی است — به خودت افتخار کن."
     try:
         await q.message.reply_text(reply, parse_mode="Markdown")
     except Exception:
@@ -1830,6 +1878,19 @@ async def _notify_companion_if_critical(context: ContextTypes.DEFAULT_TYPE,
         log.info("هشدار پیگیری همراه برای بیمار %s ارسال شد.", patient_uid)
     except Exception as e:
         log.warning("هشدار پیگیری همراه ناموفق: %s", e)
+
+
+async def cmd_sos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """کمک فوری برای بیمار: کوتاه، آرام، قابل‌اقدام (دکمه‌ی 🆘)."""
+    await update.effective_message.reply_text(
+        "🆘 *شما تنها نیستید — همین حالا:*\n\n"
+        "📞 اورژانس پزشکی: ۱۱۵\n📞 اورژانس اجتماعی: ۱۲۳\n📞 خط خودکشی: ۱۴۸۰\n\n"
+        "اگر فکرِ آسیب به خودت آمده، فقط این سه کار:\n"
+        "۱. با یک نفر تماس بگیر — یا همین ۱۴۸۰\n"
+        "۲. وسایل را از خودت دور کن\n"
+        "۳. بمون؛ موج می‌گذرد — معمولاً کمتر از نیم‌ساعت\n\n"
+        "💊 دارو را خودت قطع نکن؛ تغییر فقط با پزشک.",
+        parse_mode="Markdown", reply_markup=_kb_for(context))
 
 
 async def cmd_daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1937,7 +1998,7 @@ async def cmd_scenario(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.effective_message.reply_text(
                 f"🎬 در حال آزمون سناریوی «{sc['title']}» هستید.\n\n{sc['text']}\n\n"
                 "✍️ واکنش خود را بنویسید؛ برای پایان آزمون /cancel را بزنید.",
-                reply_markup=MAIN_KEYBOARD)
+                reply_markup=_kb_for(context))
             return
     if not context.user_data.get("scenario_lab"):
         context.user_data["scenario_lab"] = {"active": True, "path": None,
@@ -1968,7 +2029,7 @@ async def on_scpath(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.answer()
     await update.effective_message.reply_text(
         f"ثبت شد: {SPECIALIST_LABELS.get(path, path)}\n"
-        "سناریوها بر همین اساس انتخاب می‌شوند. 🎬", reply_markup=MAIN_KEYBOARD)
+        "سناریوها بر همین اساس انتخاب می‌شوند. 🎬", reply_markup=_kb_for(context))
     await _present_scenario(update, context)
 
 
@@ -2104,7 +2165,7 @@ async def on_scwipe(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.answer("پاک شد ✅")
     await update.effective_message.reply_text(
         f"🗑 آرشیو شما پاک شد ({removed} ردیف). سطح همراهی از این پس با فعالیت‌های جدید محاسبه می‌شود.",
-        reply_markup=MAIN_KEYBOARD)
+        reply_markup=_kb_for(context))
 
 
 async def on_scnext(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2127,7 +2188,7 @@ async def _scenario_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not asked:
         await update.effective_message.reply_text(
             "هنوز سناریویی پاسخ داده نشده است. با /scenario شروع کنید.",
-            reply_markup=MAIN_KEYBOARD)
+            reply_markup=_kb_for(context))
         return
     scored = [v for v in results.values() if v is not None]
     avg = round(sum(scored) / len(scored), 1) if scored else None
@@ -2158,7 +2219,7 @@ async def _scenario_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines += ["", "برای تصویر کامل: /report — برای آموزش ساختاریافته: /training"]
     if TELEGRAM_CHANNEL_ID:
         lines += ["", "📢 کانال آموزش روزانه: " + channel_link()]
-    await send_long(update, "\n".join(lines), reply_markup=MAIN_KEYBOARD, parse_mode="Markdown")
+    await send_long(update, "\n".join(lines), reply_markup=_kb_for(context), parse_mode="Markdown")
 
 
 async def cmd_cost(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2207,7 +2268,7 @@ async def _cost_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = ("💰 *نتیجه‌ی ارزشیابی هزینه*\n\n"
             f"امتیاز فشار مالی: {total} از ۱۲\nوضعیت: {tier[2]}\n\n{tier[3]}\n\n"
             "برای دیدن این نتیجه در کنار بقیه‌ی ارزیابی‌ها: /report")
-    await send_long(update, text, reply_markup=MAIN_KEYBOARD, parse_mode="Markdown")
+    await send_long(update, text, reply_markup=_kb_for(context), parse_mode="Markdown")
 
 
 async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2257,7 +2318,7 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if TELEGRAM_CHANNEL_ID:
         lines += ["", "📢 کانال آموزش روزانه: " + channel_link()]
     lines += ["", "_این گزارش ابزار آموزشی است و جایگزین ارزیابی بالینی نیست._"]
-    await send_long(update, "\n".join(lines), reply_markup=MAIN_KEYBOARD, parse_mode="Markdown")
+    await send_long(update, "\n".join(lines), reply_markup=_kb_for(context), parse_mode="Markdown")
 
 
 # ---------- سطح همراهی و آرشیو ----------
@@ -2295,7 +2356,7 @@ async def cmd_archive(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not arch:
         await update.effective_message.reply_text(
             "🗂 هنوز پاسخی آرشیو نشده است. با /scenario شروع کنید — هر پاسخ و تحلیلش "
-            "به‌صورت خودکار اینجا نگه داشته می‌شود.", reply_markup=MAIN_KEYBOARD)
+            "به‌صورت خودکار اینجا نگه داشته می‌شود.", reply_markup=_kb_for(context))
         return
     pts = _record_level(update, context)
     hist = store.levels(update.effective_user.id)
