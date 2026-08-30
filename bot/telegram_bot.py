@@ -60,7 +60,7 @@ AI_CF_URL = os.getenv("AI_API_URL", "").strip()
 AI_CF_FALLBACK = os.getenv("AI_CF_FALLBACK", "0") == "1"
 TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID", "").strip()
 CHANNEL_POST_COOLDOWN_S = float(os.getenv("CHANNEL_POST_COOLDOWN_S", "600"))
-COOLDOWN_S = float(os.getenv("TELEGRAM_COOLDOWN_S", "4"))
+COOLDOWN_S = float(os.getenv("TELEGRAM_COOLDOWN_S", "2"))
 
 if not TELEGRAM_BOT_TOKEN:
     raise SystemExit(
@@ -500,6 +500,52 @@ PATIENT_SERIES = [
 ]
 
 
+PEER_SERIES = [
+    ("همتا کیست و چه می‌کند",
+     "همتا لایه‌ی اولِ حمایت است، نه درمانگر: گوش‌دادن بدون قضاوت، تجربه‌ی مشترک به‌جای نسخه، "
+     "و ارجاعِ به‌موقع به متخصص. خانواده‌ی آموزش‌دیده، داوطلب و بهبودیافته — هر سه همتای بالقوه‌اند.",
+     "دوره‌ی حمایت همتا · SAMHSA",
+     ["نقش_خانواده", "خانواده_و_همراه"],
+     "شما تجربه‌ی حمایت همتا دارید؟"),
+    ("مرز بگذار تا نسوزی",
+     "ساعت پاسخ‌گویی‌ات مشخص باشد، «نه» گفتن را تمرین کن و بارِ درمانِ او را به دوش نکش — "
+     "یاورِ سوخته به هیچ‌کس کمک نمی‌کند. مراقبت از خودت، بخشی از حمایت است.",
+     "دوره‌ی حمایت همتا · مراقبت از یاور",
+     ["مراقبت_از_خود", "خانواده_و_همراه"],
+     "سخت‌ترین «نه» که به‌عنوان یاور گفته‌ای چه بود؟"),
+    ("زنگ‌های ارجاع فوری",
+     "پنج لحظه که همتا باید همان لحظه ارجاع بدهد: صحبت از آسیب یا خودکشی، اوردوز، قطع ناگهانی "
+     "دارو، تشدید توهم/هذیان، و بدترشدن سریع کلی. شماره‌ها: ۱۱۵ · ۱۲۳ · ۱۴۸۰.",
+     "دوره‌ی حمایت همتا · پروتکل",
+     ["بحران_و_ایمنی", "علائم_هشدار"],
+     "کدام زنگ را تا حالا تجربه کرده‌ای؟"),
+    ("گوش دادن همتایی، نه موعظه",
+     "«من هم این مسیر را رفتم» قوی‌ترین جمله‌ی توست؛ «تو باید…» ضعیف‌ترینش. مصاحبه‌ی انگیزشی "
+     "یعنی تغییر را از خودِ فرد بیرون بکشی، نه به گلویش بگذاری.",
+     "دوره‌ی حمایت همتا · روان_درمانی",
+     ["روان_درمانی", "ترک_و_مصرف"],
+     "کدام جمله در نزدیک‌ترین دوستت بیشتر اثر گذاشت؟"),
+    ("حریم، امانتِ همتا",
+     "آنچه می‌شنوی، امانت است — حتی با نیّت خوب نقلش نکن. یک استثنا هست: خطر جان او؛ آن لحظه "
+     "حریم جایش را به ایمنی می‌دهد.",
+     "دوره‌ی حمایت همتا · اخلاق حمایت",
+     ["خانواده_و_همراه"],
+     "با درخواستِ «به کسی نگو» چه می‌کنی؟"),
+    ("امید واقعی، نه شعار",
+     "«با درمان بهتر می‌شود» درست است و داده دارد؛ «معجزه می‌شود» نه. امیدِ واقعی یعنی همراهی در "
+     "روزهای بد، نه وعده‌ی روزهای همیشه‌خوب.",
+     "دوره‌ی حمایت همتا · NICE",
+     ["مراقبت_از_خود"],
+     "امید را چطور با کسی تقسیم کرده‌ای؟"),
+    ("از رنجِ خودت، نیرو بساز",
+     "بهبودیافتگان بهترین همتایند چون زخمشان را می‌شناسند — به شرطی که مرز و پایش خودشان را "
+     "نگه دارند. تجربه‌ی تاریخی‌ات، نقشه‌ی راهِ اوست، نه دکمه‌ی ترس.",
+     "دوره‌ی حمایت همتا · National Recovery Study",
+     ["نقش_خانواده", "مراقبت_از_خود"],
+     "تجربه‌ی خودت را چگونه در خدمت دیگران گذاشته‌ای؟"),
+]
+
+
 POLLS = [
     ("پرسیدن مستقیم درباره‌ی خودکشی چه اثری دارد؟",
      ["خطر را بیشتر می‌کند", "خطر را بیشتر نمی‌کند", "فقط متخصص باید بپرسد", "بهتر است موضوع عوض شود"],
@@ -573,6 +619,13 @@ def patient_post_of_day() -> str:
     entry = PATIENT_SERIES[(day // 7) % len(PATIENT_SERIES)]
     text = _render_channel_post("🧍 برای خودِ شما", entry)
     return (text + "\n\n🎬 درس‌های «دوره‌ی خودِ من» (ویدیو با زیرنویس فارسی + آزمون) در ربات — /training")
+
+
+def peer_post_of_day() -> str:
+    day = time.localtime().tm_yday
+    entry = PEER_SERIES[(day // 8) % len(PEER_SERIES)]
+    text = _render_channel_post("🤝 برای همتا و داوطلب", entry)
+    return (text + "\n\n📘 کتابچه‌ی سریع همتا در ربات: /peer — 🎓 دوره‌ی کامل: /training")
 
 
 def tip_of_day(offset: int = 0) -> str:
@@ -788,6 +841,9 @@ ROLE_GUIDES = {
     "patient": "برای بیمار با زبان ساده، امیدبخش و بدون دوز یا جزئیات حساس پاسخ بده.",
     "family": "برای خانواده، اقدامات حمایتی، علائم هشدار و زمان تماس با پزشک را ساده توضیح بده؛ دوز نده.",
     "doctor": "برای پزشک با زبان فنی، محدودیت شواهد و DOIها پاسخ بده؛ هرگز نسخه‌ی فردی نده.",
+    "peer": ("برای همتا/داوطلب (خانواده، داوطلب یا بهبودیافته‌ای که دیگران را کمک می‌کند): "
+             "تکنیک‌های حمایت همتا، گوش‌دادن بدون قضاوت، مرزهای شخصی، مراقبت از خودِ یاور، "
+             "و تشخیص لحظه‌ی ارجاع فوری به متخصص؛ هرگز توصیه‌ی دارویی یا تشخیصی نده."),
     "admin": "فقط درباره‌ی عملکرد سامانه، داده و منابع پاسخ بده؛ توصیه‌ی درمانی نده.",
 }
 
@@ -1041,7 +1097,8 @@ HELP_TEXT = (
     f"• {BTN_RISK} / /risk → ارزیابی خطر ۷ شاخصه (۰ تا ۴)\n"
     f"• {BTN_TIP} / /tip → نکته‌ی آموزشی امروز\n"
     f"• {BTN_SECTIONS} → مرور بخش‌های پروتکل درمان\n"
-    f"• {BTN_ROLE} / /role → انتخاب نقش (بیمار / همراه / متخصص)\n"
+    f"• {BTN_ROLE} / /role → انتخاب نقش (بیمار / همراه / همتا / متخصص)\n"
+    "• /peer → کتابچه‌ی سریع حمایت همتا (داوطلب‌ها و بهبودیافتگان)\n"
     f"• {BTN_TRAINING} / /training → دوره‌ی آموزش همراه با آزمون\n"
     f"• {BTN_INVITE} / /invite → لینک دعوت اختصاصی با نقش شما\n"
     f"• {BTN_SCENARIO} / /scenario → آزمون سناریو با ارزیابی هوش مصنوعی\n"
@@ -1138,11 +1195,12 @@ async def job_daily_tip(context: ContextTypes.DEFAULT_TYPE) -> None:
                 is_anonymous=True)
             log.info("نظرسنجی آموزشی هفتگی به کانال ارسال شد.")
             return
-        phase = tm.tm_yday % 7
+        phase = tm.tm_yday % 8
         post, label = [
             (critical_post_of_day, "سری حیاتی"),
             (family_post_of_day, "سری خانواده"),
             (patient_post_of_day, "سری بیمار"),
+            (peer_post_of_day, "سری همتا"),
             (tip_of_day, "نکته‌ی روز"),
             (daily_news_post, "خبر علمی"),
             (work_post_of_day, "کار و درآمد"),
@@ -1204,7 +1262,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = base + (f"\n\n📢 کانال اخبار و آموزش روزانه: {channel_link()}" if TELEGRAM_CHANNEL_ID else "")
     # لینک دعوت: t.me/bot?start=<rolecode>_<inviter_id> → نقش پیشنهادی معرف
     if context.args:
-        m = re.match(r"^(pat|fam|doc)_(\d+)$", context.args[0])
+        m = re.match(r"^(pat|fam|per|doc)_(\d+)$", context.args[0])
         if m:
             suggested = REF_ROLE_BY_CODE[m.group(1)]
             inviter_id = int(m.group(2))
@@ -1304,7 +1362,8 @@ async def answer_question(update: Update, context: ContextTypes.DEFAULT_TYPE, qu
         await update.effective_message.reply_text("لطفاً سؤال خود را بنویسید.")
         return
     if throttled(update.effective_user.id, context):
-        await update.effective_message.reply_text("⏳ چند لحظه صبر کنید و دوباره بپرسید.")
+        await update.effective_message.reply_text(
+            "🙏 پاسخ قبلی‌ام هنوز در حال آماده‌شدن است — لطفاً چند لحظه صبر کن؛ بعد دوباره بپرس.")
         return
     typing = asyncio.create_task(_keep_typing(update.effective_chat.id, context))
     try:
@@ -1410,11 +1469,17 @@ async def cmd_training(update: Update, context: ContextTypes.DEFAULT_TYPE):
         mark = ("✅ " if m["id"] in prog else ("⚠️ " if m.get("critical") else "▫️ "))
         rows.append([InlineKeyboardButton(mark + m["title"][:38],
                                           callback_data=f"train:{m['id']}")])
-    head = ("🧍 *دوره‌ی خودِ من — ویژه‌ی شما*\n\n"
-            "ساده، امیدبخش و از زبان خودتان؛ هر درس یک ویدیو با زیرنویس فارسی + درس‌نامه + آزمون ۱۰ پرسشی است."
-            if is_patient else
-            "🎓 *دوره‌ی آموزش همراه*\n\n"
-            "هر ماژول شامل 🎬 ویدیوی قابل پخش در تلگرام + آزمون ۱۰ پرسشی است.")
+    if is_patient:
+        head = ("🧍 *دوره‌ی خودِ من — ویژه‌ی شما*\n\n"
+                "ساده، امیدبخش و از زبان خودتان؛ هر درس یک ویدیو با زیرنویس فارسی + درس‌نامه + آزمون ۱۰ پرسشی است.")
+    elif get_role(context) == "peer":
+        head = ("🤝 *دوره‌ی حمایت همتا*\n\n"
+                "برای داوطلب‌ها، اعضای خانواده و بهبودیافتگانی که دیگران را همراهی می‌کنند — "
+                "هر درس: 🎬 ویدیو با زیرنویس فارسی + درس‌نامه + آزمون ۱۰ پرسشی.\n"
+                "📘 کتابچه‌ی سریع همتا: /peer")
+    else:
+        head = ("🎓 *دوره‌ی آموزش همراه*\n\n"
+                "هر ماژول شامل 🎬 ویدیوی قابل پخش در تلگرام + آزمون ۱۰ پرسشی است.")
     await update.effective_message.reply_text(
         head + "\n\n"
         f"پیشرفت شما: {done} از {len(modules)} ماژول\n\n"
@@ -1580,6 +1645,7 @@ async def _finish_training(update: Update, context: ContextTypes.DEFAULT_TYPE, m
 ROLE_OPTIONS = {
     "patient": ("🧍 بیمار", "پاسخ‌ها ساده، امیدبخش و بدون جزئیات دوز دارو"),
     "family": ("👨‍👩‍👦 همراه / خانواده", "پاسخ‌ها روی حمایت عملی، علائم هشدار و زمان تماس با پزشک"),
+    "peer": ("🤝 همتا / داوطلب", "حمایت همتا، مرزها، زمان ارجاع فوری و مراقبت از خودِ یاور"),
     "doctor": ("🩺 متخصص / درمانگر", "پاسخ‌ها فنی، با محدودیت شواهد و ارجاع به مقالات"),
 }
 
@@ -1893,6 +1959,28 @@ async def cmd_sos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown", reply_markup=_kb_for(context))
 
 
+PEER_GUIDE = (
+    "🤝 *کتابچه‌ی سریع همتا / داوطلب*\n\n"
+    "تو لایه‌ی اولِ حمایت هستی، نه درمانگر. این ۸ اصل، سپر تو و اوست:\n\n"
+    "۱. *گوش بده، قضاوت نکن* — بازگویی و تأیید احساس، بدون نصیحت فوری.\n"
+    "۲. *تجربه‌ات را بگو نه نسخه* — «من هم این مسیر را رفتم» بهتر از «تو باید…».\n"
+    "۳. *مرز بگذار* — ساعت پاسخ‌گویی‌ات مشخص باشد؛ سوختنِ تو به کسی کمک نمی‌کند.\n"
+    "۴. *دارو و تشخیص ممنوع* — هیچ توصیه‌ی دارویی، دوز یا تغییر درمان؛ فقط ارجاع.\n"
+    "۵. *زنگ‌های ارجاع فوری* — صحبت از آسیب/خودکشی، اوردوز، قطع ناگهانی دارو، تشدید توهم: "
+    "همان لحظه به تیم درمان یا ۱۱۵/۱۲۳/۱۴۸۰.\n"
+    "۶. *حریم او* — چیزی که می‌شنوی را با هیچ‌کس نقل نکن؛ حتی با نیّت خوب.\n"
+    "۷. *امید واقعی، نه شعار* — «با درمان بهتر می‌شود» درست است؛ وعده‌ی معجزه نده.\n"
+    "۸. *خودت را پر کن* — مراقبت از خودِ یاور، بخشی از حمایت است، نه خودخواهی.\n\n"
+    "🎓 دوره‌ی کامل حمایت همتا (ویدیو + آزمون): /training\n"
+    "🆘 در بحران: اورژانس ۱۱۵ · اورژانس اجتماعی ۱۲۳ · خط خودکشی ۱۴۸۰"
+)
+
+
+async def cmd_peer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """کتابچه‌ی سریع حمایت همتا برای داوطلب‌ها، خانواده و بهبودیافتگان."""
+    await send_long(update, PEER_GUIDE, reply_markup=_kb_for(context), parse_mode="Markdown")
+
+
 async def cmd_daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """مدیریت چک‌ین روزانه: روشن/خاموش + گزارش روزها."""
     app = context.application
@@ -1958,7 +2046,7 @@ async def on_daily_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ---------- دعوت دیگران با نقش (لینک اختصاصی) ----------
-ROLE_REF_CODES = {"patient": "pat", "family": "fam", "doctor": "doc"}
+ROLE_REF_CODES = {"patient": "pat", "family": "fam", "peer": "per", "doctor": "doc"}
 REF_ROLE_BY_CODE = {v: k for k, v in ROLE_REF_CODES.items()}
 
 
@@ -2068,7 +2156,8 @@ async def _evaluate_scenario(update: Update, context: ContextTypes.DEFAULT_TYPE,
     """ارزیابی فوری پاسخ همراه (دکمه‌ای یا نوشتاری) با هوش مصنوعی + آرشیو + پیشنهاد آموزش."""
     lab = context.user_data.get("scenario_lab") or {}
     if throttled(update.effective_user.id, context):
-        await update.effective_message.reply_text("⏳ چند لحظه صبر کنید و دوباره تلاش کنید.")
+        await update.effective_message.reply_text(
+            "🙏 ارزیابی قبلی هنوز در حال آماده‌شدن است — چند لحظه صبر کن و بعد دوباره بفرست.")
         return
     typing = asyncio.create_task(_keep_typing(update.effective_chat.id, context))
     data = None
@@ -2590,6 +2679,7 @@ async def _post_init(app: Application) -> None:
         BotCommand("about", "درباره‌ی ربات و منابع"),
         BotCommand("tags", "راهنمای هشتگ‌های کانال"),
         BotCommand("daily", "چک‌ین روزانه: دارو + حال + وسوسه"),
+        BotCommand("peer", "کتابچه‌ی سریع حمایت همتا"),
         BotCommand("cancel", "لغو ارزیابی در جریان"),
     ]
     try:
@@ -2623,10 +2713,11 @@ def main():
         app.add_handler(CommandHandler("channel_status", cmd_channel_status))
     app.add_handler(CommandHandler("tags", cmd_tags))
     app.add_handler(CommandHandler("daily", cmd_daily))
+    app.add_handler(CommandHandler("peer", cmd_peer))
     app.add_handler(CallbackQueryHandler(on_daily_check, pattern=r"^dchk:"))
     app.add_handler(CallbackQueryHandler(on_daily_toggle, pattern=r"^dailytgl:"))
     app.add_handler(CallbackQueryHandler(on_risk_button, pattern=r"^risk:\d$"))
-    app.add_handler(CallbackQueryHandler(on_role_button, pattern=r"^role:(patient|family|doctor)$"))
+    app.add_handler(CallbackQueryHandler(on_role_button, pattern=r"^role:(patient|family|peer|doctor)$"))
     app.add_handler(CallbackQueryHandler(on_section_button, pattern=r"^sec:\d+$"))
     app.add_handler(CommandHandler("training", cmd_training))
     app.add_handler(CommandHandler("invite", cmd_invite))
