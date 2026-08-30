@@ -574,6 +574,11 @@ def fetch_pubmed_recent(max_items: int = 5, window_days: int = 20) -> list:
     return out
 
 
+def _html_escape(s: str) -> str:
+    """امن‌سازی متن برای parse_mode=HTML تلگرام."""
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def auto_news_post() -> str | None:
     """پست خبری خودکار: مقاله‌ی تازه‌ی PubMed + خلاصه‌ی فارسی با هوش مصنوعی محلی + پرسش.
     اگر واکشی یا خلاصه‌سازی ناموفق بود None برمی‌گرداند تا سری ایستا جایگزین شود."""
@@ -596,8 +601,8 @@ def auto_news_post() -> str | None:
         if not summary:
             summary = (f"مطالعه‌ی تازه‌ای در {item['journal']} منتشر شده است.\n"
                        f"💬 نظر شما درباره‌ی این موضوع چیست؟")
-        body = summary + f"\n\n🔎 عنوان اصلی: {item['title']}"
-        entry = (item["journal"], body, f"PubMed · PMID {item['pmid']}",
+        body = summary + f"\n\n🔎 عنوان اصلی: {_html_escape(item['title'])}"
+        entry = (_html_escape(item["journal"]), body, f"PubMed · PMID {item['pmid']}",
                  ["مطالعه_جدید", "مجله_و_نشریه"], "")
         text = _render_channel_post("🔬 خبر علمی (خودکار)", entry)
         return text.replace("📖 منبع:",
@@ -1043,7 +1048,8 @@ async def job_daily_tip(context: ContextTypes.DEFAULT_TYPE) -> None:
             (work_post_of_day, "کار و درآمد"),
             (team_post_of_day, "تیم و استارتاپ"),
         ][phase]
-        await post_to_channel(context.bot, post())
+        # در نخ جدا تا فراخوانیِ شبکه‌ای (PubMed/AI) حلقه‌ی رویداد را نبندد
+        await post_to_channel(context.bot, await asyncio.to_thread(post))
         log.info("پست آموزشی روزانه به کانال ارسال شد (%s).", label)
     except Exception as e:
         log.warning("ارسال پست آموزشی به کانال ناموفق: %s", e)
