@@ -55,7 +55,8 @@ jobs:
       - name: Run bot (~5h48m) with periodic data sync
         run: |
           sync_data() {
-            cp -f data/bot.db data/bot_data.pkl /tmp/datarepo/data/ 2>/dev/null || return 0
+            cp -f data/bot.db /tmp/datarepo/data/ 2>/dev/null || true
+            cp -f data/bot_data.pkl /tmp/datarepo/data/ 2>/dev/null || true
             git -C /tmp/datarepo add -A
             git -C /tmp/datarepo -c user.name="bot-sync" -c user.email="bot@users.noreply.github.com" \
               commit -qm "data sync $(date -u +%H:%M) [skip ci]" || return 0
