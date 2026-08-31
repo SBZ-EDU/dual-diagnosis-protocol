@@ -934,7 +934,8 @@ def _ask_cf_worker(question: str, role: str) -> dict | None:
         AI_CF_URL, data=body, method="POST",
         headers={"content-type": "application/json",
                  "user-agent": "dual-diagnosis-protocol-bot/1.0"})
-    with urllib.request.urlopen(req, timeout=AI_TIMEOUT) as r:
+    # هاست پشتیبان نباید کاربر را معطل کند — سقف جدا و کوتاه‌تر
+    with urllib.request.urlopen(req, timeout=min(12, AI_TIMEOUT)) as r:
         data = json.loads(r.read().decode("utf-8"))
     if "answer" in data:
         return data
@@ -2911,6 +2912,8 @@ def main():
         else:
             log.warning("job_queue در دسترس نیست (python-telegram-bot[job-queue])؛ پست روزانه فعال نشد.")
     host_desc = AI_HOST_URL + (" · مدل: " + AI_HOST_MODEL if AI_HOST_MODEL else "") if AI_HOST_URL else "حالت محلی — بدون هاست بیرونی"
+    if AI_CF_FALLBACK and AI_CF_URL:
+        host_desc += " + پشتیبان: ورکر کلودفلر"
     log.info("ربات پروتکل (بخش اصلی) + دستیار هوش مصنوعی (%s) راه‌اندازی می‌شود...", host_desc)
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 

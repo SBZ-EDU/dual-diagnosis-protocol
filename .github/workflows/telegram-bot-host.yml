@@ -26,6 +26,9 @@ jobs:
       AI_HOST_KEY: ollama
       AI_HOST_MODEL: qwen2.5:7b
       AI_TIMEOUT: "35"
+      # هاست پشتیبان: ورکر کلودفلر (Workers AI + RAG + کش D1)
+      AI_API_URL: https://dual-diagnosis-clinical-hub.elasa2next.workers.dev/api/chat
+      AI_CF_FALLBACK: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -126,6 +129,46 @@ jobs:
           git -C /tmp/datarepo -c user.name="bot-sync" -c user.email="bot@users.noreply.github.com" \
             commit -qm "ai smoke test [skip ci]" || true
           git -C /tmp/datarepo push -q origin main || true
+
+      - name: Host & database health check (multi-host test)
+        run: |
+          echo "===== تست سلامت هاست‌ها و پایگاه داده ====="
+          echo "--- ۱) هاست اصلی: Ollama محلی (qwen2.5:7b) ---"
+          if curl -s --max-time 20 http://127.0.0.1:11434/api/tags | grep -q qwen; then
+            echo "✅ Ollama primary: OK"
+          else
+            echo "⚠️ Ollama primary: DOWN (بافت به هاست پشتیبان)"
+          fi
+          echo "--- ۲) هاست پشتیبان: ورکر کلودفلر ---"
+          HEALTH=$(curl -s --max-time 25 https://dual-diagnosis-clinical-hub.elasa2next.workers.dev/api/health || echo '{}')
+          echo "$HEALTH" | head -c 400; echo
+          CHAT=$(curl -s --max-time 30 -X POST https://dual-diagnosis-clinical-hub.elasa2next.workers.dev/api/chat \
+            -H "content-type: application/json" \
+            -d '{"question":"تست سلامت: علامت هشدار عود؟","role":"family"}' || echo '{}')
+          echo "$CHAT" | python3 -c "
+          import sys, json
+          try:
+            d = json.load(sys.stdin)
+            if d.get('answer'):
+                print('✅ CF fallback chat: OK — منبع:', d.get('source'), '| تأخیر:', d.get('latency_ms'), 'ms')
+            else:
+                print('⚠️ CF fallback chat: پاسخ نداد —', str(d)[:150])
+          except Exception as e:
+            print('⚠️ CF fallback chat: خراب —', e)
+          "
+          echo "--- ۳) پایگاه داده‌ی محلی (SQLite بازیابی‌شده) ---"
+          python3 -c "
+          import glob, os, sqlite3
+          files = glob.glob('data/*.db') + glob.glob('data/*.sqlite*') + glob.glob('data/*.json')
+          print('فایل‌های داده:', files if files else '(جدید — بدون داده‌ی قبلی)')
+          for f in glob.glob('data/*.db') + glob.glob('data/*.sqlite*'):
+              try:
+                  n = sqlite3.connect(f).execute('SELECT count(*) FROM sqlite_master').fetchone()[0]
+                  print(f'  ✅ {f}: سالم ({n} شیء)')
+              except Exception as e:
+                  print(f'  ⚠️ {f}: {e}')
+          "
+          echo "===== پایان تست سلامت ====="
 
       - name: Run bot (~5h48m) with periodic data sync
         run: |
