@@ -760,7 +760,7 @@ def auto_news_post() -> str | None:
                 "(بدون اصطلاح فنی سنگین) و در خط آخر یک سؤال کوتاه گفت‌وگویی برای مخاطب عمومی بنویس:\n"
                 + item["title"], "family")
             if data and data.get("answer"):
-                summary = data["answer"].strip()
+                summary = _sanitize_ai_text(data["answer"].strip())
         except Exception:
             summary = None
         if not summary:
@@ -889,7 +889,8 @@ AI_SYSTEM_PROMPT = (
     "صریح بگو. در وضعیت اورژانس اول به خدمات اورژانس (۱۱۵)، اورژانس اجتماعی (۱۲۳) یا "
     "خط خودکشی (۱۴۸۰) ارجاع بده. "
     "قانون مهم کوتاه‌بودن: پاسخ حداکثر ۴ تا ۶ خط (~۸۰ کلمه) باشد؛ بدون مقدمه، تعارف و تکرار؛ "
-    "فقط نکات کلیدی، در صورت نیاز فهرست کوتاه با خط تیره؛ در پایان فقط در صورت نیاز یک جمله‌ی «قدم بعدی»."
+    "فقط نکات کلیدی، در صورت نیاز فهرست کوتاه با خط تیره؛ در پایان فقط در صورت نیاز یک جمله‌ی «قدم بعدی». "
+    "هرگز آدرس اینترنتی یا لینک نساز و از خودت URL اختراع نکن."
 )
 
 ROLE_GUIDES = {
@@ -1214,10 +1215,46 @@ def split_message(text: str, limit: int = MAX_LEN) -> list[str]:
     return parts
 
 
+# آدرس‌های صحیح (هرگونه غلط املایی/حروف‌بزرگ رایج مدل‌ها اصلاح می‌شود)
+_BOT_URL = "https://t.me/AI_Aiddiction_Assistant_bot"
+
+
+def _channel_url() -> str:
+    """آدرس کانال — تنبل، چون channel_link بعداً در فایل تعریف می‌شود."""
+    try:
+        return channel_link() if TELEGRAM_CHANNEL_ID else ""
+    except Exception:
+        return ""
+
+
+
+def _sanitize_ai_text(text: str) -> str:
+    """پاک‌سازی لینک‌های پاسخ هوش مصنوعی: طرحِ حروف‌بزرگ، آدرس‌های غلط کانال/ربات."""
+    # ۱) HTTP:// و HTTPS:// با حروف کوچک (تلگرام لینک طرح بزرگ را قبول نمی‌کند)
+    text = re.sub(r"(?i)\b(https?)://", lambda m: m.group(1).lower() + "://", text)
+    # ۲) هر آدرس t.me که «شبیه» کانال ماست ولی دقیقاً درست نیست → آدرس صحیح
+    def _fix_tme(m):
+        url = m.group(0)
+        tail = url.split("/", 1)[1]
+        key = re.sub(r"[^a-z]", "", tail.lower())
+        if key == "aiaddictionassistant":
+            return ch  # کانال
+        if ("aiddiction" in key and "bot" in key) or key == "aiaddictionassistantbot":
+            return _BOT_URL  # ربات
+        return url
+    ch = _channel_url()
+    if ch:
+        text = re.sub(r"(?i)t\.me/[A-Za-z0-9_]+", _fix_tme, text)
+    # ۳) لینک مارک‌داونِ بی‌متن یا تکراری: [url](همان url) → فقط url
+    text = re.sub(r"\[([^\]\n]+)\]\(([^)\n]+)\)", lambda m: m.group(2) if m.group(1).strip().rstrip('/') == m.group(2).strip().rstrip('/') else m.group(0), text)
+    return text
+
+
 def _md_clean(text: str) -> str:
     """حذف نشان‌های مارک‌داون برای ارسالِ ساده‌ی تمیز (بدون ستاره‌ی خام)."""
     text = re.sub(r"\*{1,3}([^*\n]+)\*{1,3}", r"\1", text)   # *بولد* / **بولد**
     text = re.sub(r"(?<!\w)_([^_\n]+)_(?!\w)", r"\1", text)  # _ایتالیک_
+    text = re.sub(r"\[([^\]\n]+)\]\(([^)\n]+)\)", r"\1 (\2)", text)  # لینک مارک‌داون → متن + آدرس
     text = text.replace("*", "").replace("`", "")  # ستاره/بک‌تیک یتیم
     return text
 
@@ -1461,6 +1498,55 @@ def _shorten_answer(text: str, limit: int = 1100) -> str:
     return cut.rstrip() + "…"
 
 
+# --- حافظه‌ی شخصی و پرسش‌های «خودم» (هرگز به هوش مصنوعی بیرونی فرستاده نمی‌شود) ---
+_NAME_SET_RE = re.compile(
+    r"^(?:اسم|نام)\s+من\s+([^،,.!?\n]{2,40}?)(?:\s+(?:است|هست|هستم|می‌باشد))?$", re.M)
+_SELF_Q_RE = re.compile(
+    r"نامم(?![ا-ی])|نام\s*من(?![ا-ی])|اسمی\s*که\s*گفتم|کی\s*هستم"
+    r"|پروفایلم|پروفایل\s*من|اطلاعات\s*من(?![ا-ی])|تاریخچه[‌\s]*(?:ام|ی\s*من|من)"
+    r"|چک[‌\s]*ین[‌\s]*(?:های\s*من|ام|من|کردم|نکردم|نکرده‌ام|دادم)"
+    r"|گزارش\s*من(?![ا-ی])|رکورد\s*من|پیشرفت\s*من|آمار\s*من|چه\s*چیزهایی\s*از\s*من", re.I)
+
+
+def _user_display_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> str:
+    saved = (context.user_data.get("profile_name") or "").strip()
+    if saved:
+        return saved
+    u = update.effective_user
+    return (u.first_name if u else None) or "دوست من"
+
+
+def _profile_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> str:
+    """کارت «من و مسیرم» — فقط از داده‌های محلی خودِ کاربر."""
+    name = _user_display_name(update, context)
+    role = get_role(context)
+    role_label = ROLE_OPTIONS.get(role, ("—",))[0]
+    streak = _daily_streak(context)
+    total_checkins = len(_daily_log(context))
+    prog = context.user_data.get("academy") or {}
+    modules = _active_modules(context)
+    done_mod = sum(1 for m in modules if m["id"] in prog)
+    tot_mod = len(modules)
+    hist = context.user_data.get("risk_history") or []
+    pts = context.user_data.get("level_pts") or 0
+    lines = ["🪪 *من و مسیرم*", "", f"👤 نام: {name}", f"🎭 نقش: {role_label}"]
+    if role == "patient":
+        lines.append(f"☀️ چک‌ین‌های ثبت‌شده: {fa_digits(total_checkins)} "
+                     f"(پیوسته: {fa_digits(streak)} روز)")
+        lines.append(f"🎓 درس‌های من: {fa_digits(done_mod)} از {fa_digits(tot_mod)}")
+        if streak in (7, 14, 30, 60, 100, 365):
+            lines.append(f"🎉 رکورد پیوسته‌ی {fa_digits(streak)} روزه — قهرمانی!")
+    else:
+        lines.append(f"🎓 ماژول‌های آموزشی: {fa_digits(done_mod)} از {fa_digits(tot_mod)}")
+        if hist:
+            lines.append(f"📈 پایش خطر: {fa_digits(len(hist))} ثبت | آخرین: "
+                         f"{fa_digits(hist[-1]['score'])} از ۷۶")
+        lines.append(f"🏆 سطح همراهی: {_level_of(pts)} — {fa_digits(pts)} نمره")
+    lines.append("")
+    lines.append("🔒 این اطلاعات فقط نزد خودِ شما ذخیره می‌شود؛ به هیچ سروری فرستاده نمی‌شود.")
+    return "\n".join(lines)
+
+
 async def answer_question(update: Update, context: ContextTypes.DEFAULT_TYPE, question: str):
     question = (question or "").strip()
     if not question:
@@ -1470,13 +1556,26 @@ async def answer_question(update: Update, context: ContextTypes.DEFAULT_TYPE, qu
         await update.effective_message.reply_text(
             "🙏 پاسخ قبلی‌ام هنوز در حال آماده‌شدن است — لطفاً چند لحظه صبر کن؛ بعد دوباره بپرس.")
         return
+    # --- حافظه‌ی شخصی: «اسم من X است» → ذخیره؛ پرسش از خود/تاریخچه → پاسخ محلی ---
+    m = _NAME_SET_RE.search(question.strip())
+    if m and (m.group(1) or "").strip():
+        given = m.group(1).strip()
+        context.user_data["profile_name"] = given
+        await update.effective_message.reply_text(
+            f"خوشحالم که رفاقت شدم، {given} 🤍 اسمت را به خاطر می‌سپارم.",
+            reply_markup=_kb_for(context))
+        return
+    if _SELF_Q_RE.search(question):
+        await send_long(update, _profile_text(update, context),
+                        reply_markup=_kb_for(context))
+        return
     typing = asyncio.create_task(_keep_typing(update.effective_chat.id, context))
     try:
         # در نخ جدا: embedding روی Ollama و جست‌وجوی IDF نباید حلقه‌ی رویداد را قفل کنند
         ai_q, srcs = await asyncio.to_thread(build_grounded_question, question)
         data = await asyncio.to_thread(ask_ai, ai_q, get_role(context))  # بخش هوش مصنوعی
         if data:
-            answer = _shorten_answer(data["answer"].rstrip())
+            answer = _sanitize_ai_text(_shorten_answer(data["answer"].rstrip()))
             lines = [answer, ""]
             if get_role(context) == "patient":
                 # بیمار: بدون متای فنی — فقط پاسخ + یادآوری کوتاه
@@ -1948,7 +2047,7 @@ def _ai_daily_message(snapshot: str) -> str | None:
             "صمیمی، امیدبخش و مشخص برای وضعیت او — بدون توصیه‌ی دارویی و بدون تکرارِ کلیشه. "
             "وضعیت چک‌ین‌های اخیر او: " + snapshot, "patient")
         if data and data.get("answer"):
-            return _shorten_answer(data["answer"].strip(), 400)
+            return _sanitize_ai_text(_shorten_answer(data["answer"].strip(), 400))
     except Exception:
         return None
     return None
@@ -2332,7 +2431,7 @@ async def _evaluate_scenario(update: Update, context: ContextTypes.DEFAULT_TYPE,
     ai_score = None
     feedback = ""
     if data and data.get("answer"):
-        feedback = data["answer"].strip()
+        feedback = _sanitize_ai_text(data["answer"].strip())
         m = re.search(r"نمره[^0-9۰-۹]{0,15}?([0-9۰-۹]+)", feedback)
         if m:
             num = m.group(1).translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789"))
