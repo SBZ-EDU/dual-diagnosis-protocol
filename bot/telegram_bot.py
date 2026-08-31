@@ -1062,8 +1062,8 @@ def _search_corpus_idf(query: str, k: int = 3) -> list:
     return [CORPUS[i] for _, i in scored[:k]]
 
 
-def build_grounded_question(question: str) -> tuple:
-    """پرسش کاربر + شواهدِ پایگاه دانش محلی → پرامپت مستند (RAG محلی)."""
+def build_grounded_question(question: str, user_context: str = "") -> tuple:
+    """پرسش کاربر + شواهدِ پایگاه دانش + بافتِ شخصی → پرامپت مستند (KAG)."""
     ctx = search_corpus(question)
     if not ctx:
         return question, []
@@ -1071,10 +1071,66 @@ def build_grounded_question(question: str) -> tuple:
         f"شواهد {i + 1}. ({c.get('source', '—')}): {(c.get('text') or '')[:700]}"
         for i, c in enumerate(ctx))
     srcs = sorted({(c.get("source") or "—") for c in ctx})
-    prompt = (f"شواهد:\n{evid}\n\nپرسش: {question}\n\n"
+    uctx = (f"\n\nبافتِ کاربر (پاسخ را متناسب با آن تنظیم کن — سن، نسبت، کار و وضعیت مالی):\n{user_context}\n"
+            if user_context else "")
+    prompt = (f"شواهد:\n{evid}\n{uctx}\nپرسش: {question}\n\n"
               "فقط بر اساس شواهد بالا پاسخ بده و به شماره‌ی شواهد ارجاع بده؛ "
               "اگر شواهد کافی نیست صریح بگو.")
     return prompt, srcs
+
+
+# ---------- پروفایل شخصی‌سازی (سن، نسبت، کار، پول) ----------
+PROFILE_OPTIONS = {
+    "age": ("🎂 سن شما", [
+        ("teen", "زیر ۲۰ سال"), ("young", "۲۰ تا ۳۵"), ("mid", "۳۵ تا ۵۵"), ("senior", "بالای ۵۵")]),
+    "rel": ("🤝 نسبت شما با بیمار", [
+        ("self", "خودم بیمارم"), ("spouse", "همسر"), ("parent", "والد"), ("child", "فرزند"),
+        ("sibling", "خواهر/برادر"), ("friend", "دوست/داوطلب")]),
+    "work": ("💼 وضعیت کاری", [
+        ("employed", "شاغل"), ("student", "دانش‌آموز/دانشجو"), ("unemployed", "بیکار"), ("retired", "بازنشسته")]),
+    "money": ("💰 فشار مالی این روزها", [
+        ("high", "زیاد"), ("mid", "متوسط"), ("low", "کم")]),
+}
+_PROFILE_LABELS = {k: {v: lbl for v, lbl in opts} for k, (_, opts) in PROFILE_OPTIONS.items()}
+
+
+def _profile_context(context: ContextTypes.DEFAULT_TYPE) -> str:
+    """سطر بافتِ کاربر برای پرامپت KAG — از نقش + پروفایل + پرسش‌های اخیر."""
+    p = context.user_data.get("profile") or {}
+    role = get_role(context)
+    parts = [f"نقش: {ROLE_OPTIONS.get(role, ('—',))[0]}"]
+    if p.get("age"):
+        parts.append("سن: " + _PROFILE_LABELS["age"][p["age"]])
+    if p.get("rel"):
+        parts.append("نسبت با بیمار: " + _PROFILE_LABELS["rel"][p["rel"]])
+    if p.get("work"):
+        parts.append("وضعیت کاری: " + _PROFILE_LABELS["work"][p["work"]])
+    if p.get("money"):
+        parts.append("فشار مالی: " + _PROFILE_LABELS["money"][p["money"]])
+    return "؛ ".join(parts)
+
+
+def _remember_question(context: ContextTypes.DEFAULT_TYPE, question: str) -> None:
+    """تاریخچه‌ی گفتگو: ۵ پرسش اخیر برای پیشنهاد درسِ آکادمی."""
+    hist = context.user_data.setdefault("recent_questions", [])
+    if question and (not hist or hist[-1] != question):
+        hist.append(question)
+        del hist[:-5]
+
+
+def _recommended_module(context: ContextTypes.DEFAULT_TYPE):
+    """پیشنهاد درس بر اساس پروفایل + تاریخچه‌ی گفتگو → (module_id, دلیل)."""
+    p = context.user_data.get("profile") or {}
+    hist = " ".join(context.user_data.get("recent_questions") or [])
+    text = hist
+    money_kw = any(k in text for k in ("پول", "هزینه", "قیمت", "خرج", "بیکار", "کار", "شغل", "درآمد", "حقوق", "قرض"))
+    if money_kw or p.get("money") == "high":
+        return "patient-work", "پرسش‌ها و نگرانی‌های مالی/کاری‌ات را دیدم — این درس دقیقاً برای همین است"
+    if p.get("rel") == "spouse":
+        return None, "چون همسر بیمار هستی، بخش «❤️ مثلث عشق در بهبودی» سایت و دستور /love را هم ببین"
+    if p.get("age") in ("teen", "young"):
+        return None, "در سنِ تو، مداخله‌ی زودهنگام بیشترین اثر را دارد — درس‌ها را با همان انرژی پیش ببر"
+    return None, None
 
 
 # ============================================================
@@ -1169,6 +1225,7 @@ HELP_TEXT = (
     f"• {BTN_ROLE} / /role → انتخاب نقش (بیمار / همراه / همتا / متخصص)\n"
     "• /peer → کتابچه‌ی سریع حمایت همتا (داوطلب‌ها و بهبودیافتگان)\n"
     "• /love → مثلث عشق استرنبرگ در بهبودی؛ پیام‌ها و هشدارهای لطیف برای رابطه\n"
+    "• /profile → سن، نسبت با بیمار، کار و فشار مالی — پاسخ‌ها و درس‌ها را متناسب با خودت می‌کند\n"
     f"• {BTN_TRAINING} / /training → دوره‌ی آموزش همراه با آزمون\n"
     f"• {BTN_INVITE} / /invite → لینک دعوت اختصاصی با نقش شما\n"
     f"• {BTN_SCENARIO} / /scenario → آزمون سناریو با ارزیابی هوش مصنوعی\n"
@@ -1530,6 +1587,10 @@ def _profile_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> str:
     hist = context.user_data.get("risk_history") or []
     pts = context.user_data.get("level_pts") or 0
     lines = ["🪪 *من و مسیرم*", "", f"👤 نام: {name}", f"🎭 نقش: {role_label}"]
+    p = context.user_data.get("profile") or {}
+    plines = [f"{t}: {_PROFILE_LABELS[k][p[k]]}" for k, (t, _) in PROFILE_OPTIONS.items() if p.get(k)]
+    if plines:
+        lines.append("🎛️ " + "؛ ".join(plines))
     if role == "patient":
         lines.append(f"☀️ چک‌ین‌های ثبت‌شده: {fa_digits(total_checkins)} "
                      f"(پیوسته: {fa_digits(streak)} روز)")
@@ -1572,7 +1633,9 @@ async def answer_question(update: Update, context: ContextTypes.DEFAULT_TYPE, qu
     typing = asyncio.create_task(_keep_typing(update.effective_chat.id, context))
     try:
         # در نخ جدا: embedding روی Ollama و جست‌وجوی IDF نباید حلقه‌ی رویداد را قفل کنند
-        ai_q, srcs = await asyncio.to_thread(build_grounded_question, question)
+        _remember_question(context, question)  # تاریخچه‌ی گفتگو برای پیشنهاد درس
+        ai_q, srcs = await asyncio.to_thread(
+            build_grounded_question, question, _profile_context(context))
         data = await asyncio.to_thread(ask_ai, ai_q, get_role(context))  # بخش هوش مصنوعی
         if data:
             answer = _sanitize_ai_text(_shorten_answer(data["answer"].rstrip()))
@@ -1674,16 +1737,26 @@ async def cmd_training(update: Update, context: ContextTypes.DEFAULT_TYPE):
         mark = ("✅ " if m["id"] in prog else ("⚠️ " if m.get("critical") else "▫️ "))
         rows.append([InlineKeyboardButton(mark + m["title"][:38],
                                           callback_data=f"train:{m['id']}")])
+    mod_id, why = _recommended_module(context)
+    rec = ""
+    if mod_id:
+        mod = next((m for m in modules if m["id"] == mod_id), None)
+        if mod:
+            done_ids = prog_done = context.user_data.get("academy") or {}
+            rec = (f"💡 *پیشنهاد ویژه‌ی شما:* {mod['title']} — {why}\n"
+                   + ("(این درس را انجام داده‌ای ✓)\n" if mod["id"] in done_ids else "") + "\n")
+    elif why:
+        rec = f"💡 {why}\n\n"
     if is_patient:
-        head = ("🧍 *دوره‌ی خودِ من — ویژه‌ی شما*\n\n"
+        head = rec + ("🧍 *دوره‌ی خودِ من — ویژه‌ی شما*\n\n"
                 "ساده، امیدبخش و از زبان خودتان؛ هر درس یک ویدیو با زیرنویس فارسی + درس‌نامه + آزمون ۱۰ پرسشی است.")
     elif get_role(context) == "peer":
-        head = ("🤝 *دوره‌ی حمایت همتا*\n\n"
+        head = rec + ("🤝 *دوره‌ی حمایت همتا*\n\n"
                 "برای داوطلب‌ها، اعضای خانواده و بهبودیافتگانی که دیگران را همراهی می‌کنند — "
                 "هر درس: 🎬 ویدیو با زیرنویس فارسی + درس‌نامه + آزمون ۱۰ پرسشی.\n"
                 "📘 کتابچه‌ی سریع همتا: /peer")
     else:
-        head = ("🎓 *دوره‌ی آموزش همراه*\n\n"
+        head = rec + ("🎓 *دوره‌ی آموزش همراه*\n\n"
                 "هر ماژول شامل 🎬 ویدیوی قابل پخش در تلگرام + آزمون ۱۰ پرسشی است.")
     await update.effective_message.reply_text(
         head + "\n\n"
@@ -1857,6 +1930,77 @@ ROLE_OPTIONS = {
 
 def get_role(context: ContextTypes.DEFAULT_TYPE) -> str:
     return context.user_data.get("role", "patient")
+
+
+async def cmd_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """پروفایل شخصی‌سازی: سن، نسبت، کار، فشار مالی → پاسخ‌ها و درس‌ها متناسب می‌شوند."""
+    p = context.user_data.get("profile") or {}
+    lines = ["🎛️ *پروفایل شما — پاسخ‌ها را دقیق‌تر می‌کند*", ""]
+    for key, (title, _) in PROFILE_OPTIONS.items():
+        cur = _PROFILE_LABELS[key].get(p.get(key), "تعیین نشده")
+        lines.append(f"{title}: {cur}")
+    lines += ["", "برای تنظیم/ویرایش، مورد را انتخاب کن:", "🔒 فقط نزد خودت ذخیره می‌شود و پاسخ‌ها را شخصی می‌کند."]
+    rows = []
+    for key, (title, _) in PROFILE_OPTIONS.items():
+        if not p.get(key):
+            rows.append([InlineKeyboardButton(title, callback_data=f"prof:{key}")])
+    if rows:
+        rows.append([InlineKeyboardButton("✏️ ویرایش موردی", callback_data="prof:edit")])
+    kb = InlineKeyboardMarkup(rows) if rows else InlineKeyboardMarkup(
+        [[InlineKeyboardButton(t, callback_data=f"prof:{k}")] for k, (t, _) in PROFILE_OPTIONS.items()][:4])
+    await send_long(update, "\n".join(lines), reply_markup=kb, parse_mode="Markdown")
+
+
+async def on_profile_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    data = (q.data or "").replace("prof:", "")
+    if data == "edit":
+        await q.answer()
+        rows = [[InlineKeyboardButton(t, callback_data=f"prof:{k}")] for k, (t, _) in PROFILE_OPTIONS.items()]
+        await update.effective_message.reply_text(
+            "کدام مورد را تنظیم کنیم؟", reply_markup=InlineKeyboardMarkup(rows))
+        return
+    if data in PROFILE_OPTIONS:
+        await q.answer()
+        title, opts = PROFILE_OPTIONS[data]
+        rows = [[InlineKeyboardButton(lbl, callback_data=f"profset:{data}:{v}")] for v, lbl in opts]
+        rows.append([InlineKeyboardButton("⏭️ رد کردن", callback_data="prof:end")])
+        await update.effective_message.reply_text(
+            f"{title} را انتخاب کن:", reply_markup=InlineKeyboardMarkup(rows))
+        return
+    await q.answer()
+
+
+async def on_profile_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    try:
+        _, key, val = (q.data or "").split(":", 2)
+    except ValueError:
+        await q.answer(); return
+    await q.answer()
+    if key not in PROFILE_OPTIONS or val not in _PROFILE_LABELS[key]:
+        await q.answer("گزینه نامعتبر است.", show_alert=True); return
+    context.user_data.setdefault("profile", {})[key] = val
+    label = _PROFILE_LABELS[key][val]
+    # بعد از هر تنظیم، مورد بعدیِ خالی را بپرس
+    nxt = next((k for k in PROFILE_OPTIONS if not (context.user_data.get("profile") or {}).get(k)), None)
+    if nxt:
+        title, opts = PROFILE_OPTIONS[nxt]
+        rows = [[InlineKeyboardButton(lbl, callback_data=f"profset:{nxt}:{v}")] for v, lbl in opts]
+        rows.append([InlineKeyboardButton("⏭️ رد کردن", callback_data="prof:end")])
+        await update.effective_message.reply_text(
+            f"ذخیره شد ✓ ({label})\n\nحالا {title}:", reply_markup=InlineKeyboardMarkup(rows))
+    else:
+        await update.effective_message.reply_text(
+            f"ذخیره شد ✓ ({label})\n\n🌿 پروفایلت کامل شد — از این به بعد پاسخ‌ها و درس‌ها را متناسب با خودت می‌گیری.",
+            reply_markup=_kb_for(context))
+    # پیشنهاد فوری بر اساس پروفایل
+    mod_id, reason = _recommended_module(context)
+    if mod_id:
+        mod = next((m for m in ALL_MODULES if m["id"] == mod_id), None)
+        if mod:
+            await update.effective_message.reply_text(
+                f"💡 {reason}: *{mod['title']}* — /training", parse_mode="Markdown")
 
 
 async def cmd_role(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2927,7 +3071,8 @@ async def _post_init(app: Application) -> None:
         BotCommand("risk", "پایش خطر ۷ شاخصه"),
         BotCommand("tip", "نکته‌ی آموزشی امروز"),
         BotCommand("sections", "بخش‌های پروتکل درمان"),
-        BotCommand("role", "نقش شما: بیمار / همراه / متخصص"),
+        BotCommand("role", "نقش شما: بیمار / همراه / همتا / متخصص"),
+        BotCommand("profile", "سن، نسبت، کار و پول — پاسخ‌ها را شخصی می‌کند"),
         BotCommand("training", "دوره‌ی آموزش همراه + آزمون"),
         BotCommand("invite", "لینک دعوت اختصاصی با نقش شما"),
         BotCommand("scenario", "آزمون سناریو + ارزیابی هوش مصنوعی"),
@@ -2968,6 +3113,9 @@ def main():
     app.add_handler(CommandHandler("risk", cmd_risk))
     app.add_handler(CommandHandler("cancel", cmd_cancel))
     app.add_handler(CommandHandler("role", cmd_role))
+    app.add_handler(CommandHandler("profile", cmd_profile))
+    app.add_handler(CallbackQueryHandler(on_profile_button, pattern=r"^prof:"))
+    app.add_handler(CallbackQueryHandler(on_profile_set, pattern=r"^profset:"))
     app.add_handler(CommandHandler("history", cmd_history))
     if TELEGRAM_CHANNEL_ID:
         app.add_handler(CommandHandler("post_tip", cmd_post_tip))
