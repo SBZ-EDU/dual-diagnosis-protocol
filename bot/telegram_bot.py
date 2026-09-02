@@ -1211,7 +1211,8 @@ WELCOME_PATIENT = (
     "من همراه خودت هستم — ساده و بی‌پیچیدگی.\n\n"
     "☀️ هر روز دو پیام کوچک از من می‌گیری: صبح یادآور دارو، شب یک چکِ کوتاه.\n"
     "🎓 درس‌های من: ویدیوهای کوتاه با زیرنویس فارسی + آزمون ساده.\n"
-    "💰 پول و کار: ۱۰ ویدیوی علمی (TED) با زیرنویس فارسی + آزمون — /money\n"
+    "💰 پول و کار: ۱۰ ویدیوی علمی (TED) با زیرنویس فارسی + آزمون + چالش سخت — /money\n"
+    "🎬 جست‌وجوی ویدیو با کلیدواژه: /videos پس‌انداز\n"
     "💬 هر سؤالی داری همین‌جا بنویس؛ ساده جواب می‌گیری.\n"
     "🆘 روزِ سختی بود؟ دکمه‌ی «کمک فوری» پایین صفحه همیشه هست.\n\n"
     "⚠️ من جایگزین پزشک نیستم؛ در اورژانس: ۱۱۵ · ۱۲۳ · ۱۴۸۰"
@@ -1783,26 +1784,68 @@ async def cmd_training(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(rows), parse_mode="Markdown")
 
 
+# ---------- امتیاز و سطح (گیمیفیکیشن آموزش) ----------
+def _points(context: ContextTypes.DEFAULT_TYPE) -> int:
+    return int(context.user_data.get("points") or 0)
+
+
+def _add_points(context: ContextTypes.DEFAULT_TYPE, n: int) -> int:
+    p = _points(context) + n
+    context.user_data["points"] = p
+    return p
+
+
+def _points_level(p: int) -> str:
+    if p >= 1000:
+        return "🏅 استاد پول و کار"
+    if p >= 500:
+        return "🥇 خبره"
+    if p >= 200:
+        return "🥈 کاوشگر"
+    return "🌱 تازه‌کار"
+
+
+async def on_train_challenge(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """چالش سخت — بعد از قبولی آزمونِ درس باز می‌شود؛ قبولی چالش = حداقل ۶۰٪."""
+    q = update.callback_query
+    mid = (q.data or "").split(":", 1)[1]
+    module = next((m for m in ALL_MODULES if m["id"] == mid), None)
+    if module is None or not module.get("challenge"):
+        await q.answer("چالشی برای این درس نیست.")
+        return
+    await q.answer()
+    context.user_data["training"] = {"mid": mid, "qi": 0, "answers": [], "pool": "ch"}
+    await _ask_training_question(update, context, module, first=True)
+
+
+def _quiz_of(module: dict, st: dict) -> list:
+    return module["challenge"] if st.get("pool") == "ch" else module["quiz"]
+
+
 async def _ask_training_question(update: Update, context: ContextTypes.DEFAULT_TYPE,
                                  module: dict, first: bool = False):
     st = context.user_data.get("training") or {}
     qi = st.get("qi", 0)
-    quiz = module["quiz"]
+    quiz = _quiz_of(module, st)
     if qi >= len(quiz):
         return await _finish_training(update, context, module)
     question = quiz[qi]
     head = ""
     if first:
-        badge = "⚠️ " if module.get("critical") else ""
-        head = (f"🎓 {badge}*{module['title']}*\n"
-                f"📚 منبع: {module['source']} ({module['duration']})\n"
-                f"{module['summary']}\n"
-                + ("🎬 ویدیوی این درس در پیام قبل ارسال شد.\n" if module.get("video") else "")
-                + (("📚 *منابع استاندارد این درس:*\n" + "\n".join(
-                     f"  • [{s['name']}]({s['url']})" if s.get("url") else f"  • {s['name']}"
-                     for s in module["sources"]) + "\n") if module.get("sources") else "")
-                + (f"⚠️ نکات حیاتی: {module['deep']}\n" if module.get("deep") else "")
-                + f"🔗 {module['url']}\n\n")
+        if st.get("pool") == "ch":
+            head = (f"🔥 *چالش سختِ «{module['title']}»*\n"
+                    "هر پاسخ درست ۱۵ امتیاز · قبولی = ۳ از ۵\n\n")
+        else:
+            badge = "⚠️ " if module.get("critical") else ""
+            head = (f"🎓 {badge}*{module['title']}*\n"
+                    f"📚 منبع: {module['source']} ({module['duration']})\n"
+                    f"{module['summary']}\n"
+                    + ("🎬 ویدیوی این درس در پیام قبل ارسال شد.\n" if module.get("video") else "")
+                    + (("📚 *منابع استاندارد این درس:*\n" + "\n".join(
+                         f"  • [{s['name']}]({s['url']})" if s.get("url") else f"  • {s['name']}"
+                         for s in module["sources"]) + "\n") if module.get("sources") else "")
+                    + (f"⚠️ نکات حیاتی: {module['deep']}\n" if module.get("deep") else "")
+                    + f"🔗 {module['url']}\n\n")
     qtext = head + f"❓ *پرسش {qi + 1} از {len(quiz)}*\n\n{question['q']}"
     kb = InlineKeyboardMarkup(
         [[InlineKeyboardButton(o[:60], callback_data=f"tq:{module['id']}:{qi}:{i}")]
@@ -1822,16 +1865,17 @@ async def on_train_module(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if module is None:
         await q.answer("ماژول یافت نشد.")
         return
-    context.user_data["training"] = {"mid": mid, "qi": 0, "answers": []}
+    context.user_data["training"] = {"mid": mid, "qi": 0, "answers": [], "pool": "quiz"}
     await q.answer()
     vid = (module.get("video") or {}).get("file_id")
     if vid:
         try:
+            src_link = f"\n🔗 ویدیوی اصلی: {module['url']}" if module.get("url") else ""
             await update.effective_message.reply_video(
                 video=vid, supports_streaming=True,
                 caption=(f"🎬 *{module['title']}*\n"
                          f"👁 {module['video'].get('speaker', '')} — {module['video'].get('minutes', '')}\n"
-                         f"💬 زیرنویس: {module['video'].get('subtitles', '—')}\n\n"
+                         f"💬 زیرنویس: {module['video'].get('subtitles', '—')}{src_link}\n\n"
                          f"{module['summary']}\n\n"
                          "▶️ تماشا کنید؛ سپس آزمون ۱۰ پرسشی همین‌جا شروع می‌شود."),
                 parse_mode="Markdown")
@@ -1875,11 +1919,24 @@ async def on_train_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     st["answers"].append(oi)
     st["qi"] = qi + 1
     await q.answer()
-    # ---- بازخورد فوری: نتیجه + پاسخ درست + تحلیل آموزشی + امتیاز جاری ----
-    question = module["quiz"][qi]
+    # ---- بازخورد فوری: نتیجه + پاسخ درست + تحلیل آموزشی + امتیاز و زنجیره ----
+    quiz = _quiz_of(module, st)
+    question = quiz[qi]
     correct = (oi == question["a"])
+    streak = st.get("streak", 0)
+    if correct:
+        streak += 1
+        per = 15 if st.get("pool") == "ch" else 10
+        bonus = 5 if streak % 5 == 0 else 0
+        pts = _add_points(context, per + bonus)
+        note = f"⭐ +{per} امتیاز" + (f" (+{bonus} پاداشِ زنجیره)" if bonus else "")
+    else:
+        streak = 0
+        pts = _points(context)
+        note = "مغزتان درگیر بماند؛ نکته را بخوانید 👆"
+    st["streak"] = streak
     ok_so_far = sum(1 for i, a in enumerate(st["answers"])
-                    if i < len(module["quiz"]) and a == module["quiz"][i]["a"])
+                    if i < len(quiz) and a == quiz[i]["a"])
     done_so_far = len(st["answers"])
     if correct:
         head = "✅ درست!"
@@ -1887,6 +1944,7 @@ async def on_train_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         head = f"❌ نادرست — پاسخ درست:\n«{question['o'][question['a']]}»"
     fb = (f"{head}\n"
           f"💡 {question.get('e', '')}\n"
+          f"🔥 زنجیره: {streak} درستِ پیوسته | {note} | مجموع: {pts} امتیاز ({_points_level(pts)})\n"
           f"📊 امتیاز فعلی: {ok_so_far} از {done_so_far}")
     try:
         await q.message.edit_text(fb)
@@ -1896,8 +1954,10 @@ async def on_train_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _finish_training(update: Update, context: ContextTypes.DEFAULT_TYPE, module: dict):
-    answers = context.user_data.pop("training", {}).get("answers", [])
-    quiz = module["quiz"]
+    st = context.user_data.pop("training", {}) or {}
+    answers = st.get("answers", [])
+    is_ch = st.get("pool") == "ch"
+    quiz = module["challenge"] if is_ch else module["quiz"]
     ok = sum(1 for i, a in enumerate(answers) if i < len(quiz) and a == quiz[i]["a"])
     total = len(quiz)
     score = round(100 * ok / total) if total else 0
@@ -1905,6 +1965,33 @@ async def _finish_training(update: Update, context: ContextTypes.DEFAULT_TYPE, m
              if i < len(quiz) and a != quiz[i]["a"]]
     review = ("\n\n🔁 برای مرور: پرسش‌های " + "، ".join(wrong)
               + " — تحلیل هرکدام زیر همان پرسش آمده است.") if wrong else ""
+    # ذخیره‌ی آخرین نتیجه برای تحلیل هوشمند
+    context.user_data["last_quiz"] = {
+        "mid": module["id"], "pool": "ch" if is_ch else "quiz", "score": score,
+        "wrong_qs": [quiz[i]["q"] for i, a in enumerate(answers)
+                     if i < len(quiz) and a != quiz[i]["a"]]}
+    pass_line = 60 if is_ch else 80
+    # ---------- پایان چالش سخت ----------
+    if is_ch:
+        ch = context.user_data.setdefault("challenges", {})
+        if score >= pass_line:
+            ch[module["id"]] = score
+            pts = _add_points(context, 100)
+            text = (f"🔥 *چالش سختِ «{module['title']}» پاس شد!*\n\n"
+                    f"نمره: {score} از ۱۰۰ ({ok} از {total} درست)\n"
+                    f"⭐ +۱۰۰ امتیازِ چالش | مجموع: {pts} ({_points_level(pts)})")
+            text += review
+            rows = [[InlineKeyboardButton("🔁 چالش دوباره", callback_data=f"chlng:{module['id']}"),
+                     InlineKeyboardButton("🎓 درس‌های دوره", callback_data="moneyhome")]]
+            await send_long(update, text, reply_markup=InlineKeyboardMarkup(rows), parse_mode="Markdown")
+        else:
+            await update.effective_message.reply_text(
+                f"🔥 چالش: {ok} از {total} درست — قبولی چالش = حداقل ۶۰٪ (۳ از ۵).{review}\n"
+                "سخت است؛ همین که تلاش کردید یعنی ذهنتان درگیر شده. دوباره؟",
+                reply_markup=InlineKeyboardMarkup(
+                    [[InlineKeyboardButton("🔁 چالش دوباره", callback_data=f"chlng:{module['id']}")]]))
+        return
+    # ---------- پایان آزمون اصلی ----------
     if score >= 80:
         prog = _academy_progress(context)
         prog[module["id"]] = score
@@ -1912,8 +1999,10 @@ async def _finish_training(update: Update, context: ContextTypes.DEFAULT_TYPE, m
                  else MONEY_MODULES if module["id"].startswith("money-")
                  else CAREGIVER_MODULES)
         done = sum(1 for m in track if m["id"] in prog)
+        pts = _add_points(context, 50)
         text = (f"✅ *ماژول «{module['title']}» تکمیل شد!*\n\n"
                 f"نمره: {score} از ۱۰۰ ({ok} از {total} درست)\n"
+                f"⭐ +۵۰ امتیاز | مجموع: {pts} ({_points_level(pts)})\n"
                 f"پیشرفت دوره: {done} از {len(track)} ماژول")
         if done == len(track):
             if track is PATIENT_MODULES:
@@ -1929,9 +2018,21 @@ async def _finish_training(update: Update, context: ContextTypes.DEFAULT_TYPE, m
                          "برای دریافت گواهی با کد اعتبارسنجی، از بخش آکادمی سایت مرکز اقدام کنید:\n"
                          + SITE_ACADEMY_URL)
         text += review
-        if TELEGRAM_CHANNEL_ID:
-            text += "\n\n📢 کانال آموزش روزانه: " + channel_link()
-        await send_long(update, text, reply_markup=_kb_for(context), parse_mode="Markdown")
+        # دکمه‌های ادامه: چالش سخت + تحلیل هوشمند (ویژه‌ی درس‌های پول و کار)
+        rows = []
+        if module.get("challenge"):
+            rows.append([InlineKeyboardButton("🔥 چالش سخت (۵ پرسش سخت‌تر)",
+                                              callback_data=f"chlng:{module['id']}")])
+        if module["id"].startswith("money-"):
+            rows.append([InlineKeyboardButton("🤖 تحلیل هوشمندِ نقاط ضعف من",
+                                              callback_data=f"aian:{module['id']}")])
+        if rows:
+            text += "\n\n⬇️ قدم بعدی:"
+            await send_long(update, text, reply_markup=InlineKeyboardMarkup(rows), parse_mode="Markdown")
+        else:
+            if TELEGRAM_CHANNEL_ID:
+                text += "\n\n📢 کانال آموزش روزانه: " + channel_link()
+            await send_long(update, text, reply_markup=_kb_for(context), parse_mode="Markdown")
     else:
         await update.effective_message.reply_text(
             f"📚 نمره: {ok} از {total} درست — حداقل ۸۰٪ لازم است (۸ از ۱۰)."
@@ -1944,18 +2045,117 @@ async def _finish_training(update: Update, context: ContextTypes.DEFAULT_TYPE, m
 async def cmd_money(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """آکادمی پول و کار — دوره‌ی تکمیلی ویدیویی (۱۰ درس TED با زیرنویس فارسی)."""
     prog = _academy_progress(context)
+    ch = context.user_data.get("challenges") or {}
     done = sum(1 for m in MONEY_MODULES if m["id"] in prog)
+    done_ch = sum(1 for m in MONEY_MODULES if m["id"] in ch)
+    pts = _points(context)
     rows = []
     for i, m in enumerate(MONEY_MODULES, 1):
         mark = "✅ " if m["id"] in prog else ("⚠️ " if m.get("critical") else "▫️ ")
-        rows.append([InlineKeyboardButton(f"{mark}{i}️⃣ {m['title'][:34]}",
+        ch_mark = " 🔥" if m["id"] in ch else ""
+        rows.append([InlineKeyboardButton(f"{mark}{i}️⃣ {m['title'][:32]}{ch_mark}",
                                           callback_data=f"train:{m['id']}")])
     head = (f"💰 *{MONEY_COURSE['title']}*\n\n"
             f"{MONEY_COURSE['intro']}\n\n"
-            f"پیشرفت شما: {done} از {len(MONEY_MODULES)} درس\n"
+            f"پیشرفت شما: {done} از {len(MONEY_MODULES)} درس"
+            + (f" | 🔥 چالش‌ها: {done_ch}" if done_ch else "") + "\n"
+            f"⭐ امتیاز شما: {pts} — سطح: {_points_level(pts)}\n"
             "⚠️ بخش‌های نشان‌دار (حیاتی) اولویت اول دارند. قبولی = حداقل ۸۰٪ (۸ از ۱۰).\n"
+            "🔥 بعد از قبولی هر درس، چالش سختِ همان درس باز می‌شود (۵ پرسش سخت‌تر).\n"
+            "🎬 جست‌وجوی ویدیوها با کلیدواژه: /videos\n"
             "پس از تکمیل همه، پیام جشن خودتان را می‌گیرید 🌟")
     await send_long(update, head, reply_markup=InlineKeyboardMarkup(rows), parse_mode="Markdown")
+
+
+async def on_money_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    await cmd_money(update, context)
+
+
+async def on_train_ai_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """🤖 تحلیل هوشمند نقاط ضعف — پرسش‌های غلط کاربر به دستیار بالینی فرستاده می‌شود."""
+    q = update.callback_query
+    mid = (q.data or "").split(":", 1)[1]
+    module = next((m for m in ALL_MODULES if m["id"] == mid), None)
+    if module is None:
+        await q.answer("درس یافت نشد.")
+        return
+    # آخرین نتیجه‌ی ذخیره‌شده‌ی این ماژول
+    await q.answer("در حال تحلیل…")
+    last = context.user_data.get("last_quiz") or {}
+    if last.get("mid") != mid or not last.get("wrong_qs"):
+        prog = _academy_progress(context)
+        if prog.get(mid, 0) >= 80:
+            await update.effective_message.reply_text(
+                "🎉 در این درس نقطه‌ضعفِ ثبت‌شده‌ای ندارید!\n"
+                "اگر دوست دارید، چالش سخت را امتحان کنید یا درس بعدی را شروع کنید: /money")
+        else:
+            await update.effective_message.reply_text(
+                "برای تحلیل، اول آزمون این درس را انجام دهید: /money")
+        return
+    wrong_topics = last["wrong_qs"]
+    prompt = (
+        "کاربرِ رباتِ آموزشِ اعتیادِ دوگانه (سایکوز + مصرف مواد) درسِ "
+        f"«{module['title']}» از دوره‌ی پول و کار را پاسخ کرده و در این پرسش‌ها اشتباه کرده است:\n"
+        + "\n".join(f"- {t}" for t in wrong_topics) +
+        "\n\nلطفاً در حداکثر ۵ جمله‌ی کوتاه فارسی: (۱) الگوی اشتباه او را با زبان محترمانه بگو، "
+        "(۲) یک توصیه‌ی عملیِ کوچک برای همین هفته بده. لحن: امیدبخش، بدون سرزنش، بدون اخم وزارت‌خانه‌ای. "
+        "پاسخ فقط متن نهایی باشد.")
+    await update.effective_message.reply_text("🤖 دستیار بالینی در حال بررسی پاسخ‌های شماست…")
+    loop = asyncio.get_running_loop()
+    data = await loop.run_in_executor(None, lambda: ask_ai(prompt, get_role(context)))
+    if data and data.get("answer"):
+        text = ("🤖 *تحلیل هوشمندِ نقاط ضعف شما*\n\n"
+                + _sanitize_ai_text(str(data["answer"]))[:2500]
+                + "\n\n🔁 مرور درس: از /money دوباره وارد همان درس شوید.")
+        try:
+            await send_long(update, text, parse_mode="Markdown")
+        except Exception:
+            await send_long(update, text)
+    else:
+        await update.effective_message.reply_text(
+            "🤖 دستیار هوشمند الان در دسترس نیست؛ نکته‌ی تحلیلِ هر پرسشِ غلط را زیر همان پرسش "
+            "دیده‌اید — برای مرور، درس را از /money تکرار کنید.")
+
+
+# ---------- جست‌وجوی ویدیوهای آموزشی ----------
+async def cmd_videos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """جست‌وجوی ویدیوها و درس‌ها با کلیدواژه — از روی کل مجموعه‌ی آموزشی."""
+    args = " ".join(context.args or []).strip()
+    if not args:
+        await update.effective_message.reply_text(
+            "🎬 *جست‌وجوی ویدیوهای آموزشی*\n\n"
+            "کلیدواژه‌ات را بنویس تا درسِ مرتبط را پیدا کنم:\n"
+            "`/videos پس‌انداز`\n`/videos خواب`\n`/videos پول به بیمار`\n"
+            "جست‌وجو در همه‌ی دوره‌ها: پول و کار (۱۰ ویدیو) + بیمار + همراه",
+            parse_mode="Markdown")
+        return
+    tokens = [t for t in re.split(r"\s+", args) if len(t) > 1]
+    scored = []
+    for m in ALL_MODULES:
+        blob = " ".join([m.get("title", ""), m.get("summary", ""),
+                         m.get("source", ""), " ".join(m.get("lesson") or []),
+                         " ".join(q["q"] for q in m.get("quiz", [])[:10])])
+        score = sum(3 if t in blob else (1 if t in blob.replace("‌", "") else 0) for t in tokens)
+        if score > 0:
+            scored.append((score, m))
+    scored.sort(key=lambda x: -x[0])
+    if not scored:
+        await update.effective_message.reply_text(
+            f"🔍 برای «{args}» ویدیویی پیدا نشد.\n"
+            "کلیدواژه‌ی دیگری امتحان کن (مثلاً: پول، خواب، انگیزه، خانواده، انتخاب) "
+            "یا فهرست کامل: /money و /training")
+        return
+    rows = []
+    lines = [f"🔍 نتایج برای «{args}»:", ""]
+    for score, m in scored[:6]:
+        mark = "✅ " if m["id"] in (_academy_progress(context)) else "▫️ "
+        lines.append(f"• {mark}{m['title']} — {m.get('source', '')}")
+        rows.append([InlineKeyboardButton(f"▶️ {m['title'][:36]}",
+                                          callback_data=f"train:{m['id']}")])
+    lines += ["", "روی هر کدام بزن تا ویدیو + درس + آزمون شروع شود:"]
+    await update.effective_message.reply_text("\n".join(lines),
+                                              reply_markup=InlineKeyboardMarkup(rows))
 
 
 # ---------- نقش کاربر (بیمار / همراه / متخصص) ----------
@@ -3114,6 +3314,7 @@ async def _post_init(app: Application) -> None:
         BotCommand("profile", "سن، نسبت، کار و پول — پاسخ‌ها را شخصی می‌کند"),
         BotCommand("training", "دوره‌ی آموزش همراه + آزمون"),
         BotCommand("money", "آکادمی پول و کار: ۱۰ ویدیوی علمی + آزمون"),
+        BotCommand("videos", "جست‌وجوی ویدیوهای آموزشی با کلیدواژه"),
         BotCommand("invite", "لینک دعوت اختصاصی با نقش شما"),
         BotCommand("scenario", "آزمون سناریو + ارزیابی هوش مصنوعی"),
         BotCommand("cost", "ارزشیابی هزینه‌ی مراقبت"),
@@ -3171,6 +3372,10 @@ def main():
     app.add_handler(CallbackQueryHandler(on_section_button, pattern=r"^sec:\d+$"))
     app.add_handler(CommandHandler("training", cmd_training))
     app.add_handler(CommandHandler("money", cmd_money))
+    app.add_handler(CommandHandler("videos", cmd_videos))
+    app.add_handler(CallbackQueryHandler(on_money_home, pattern=r"^moneyhome$"))
+    app.add_handler(CallbackQueryHandler(on_train_challenge, pattern=r"^chlng:[a-z-]+$"))
+    app.add_handler(CallbackQueryHandler(on_train_ai_analysis, pattern=r"^aian:[a-z-]+$"))
     app.add_handler(CommandHandler("invite", cmd_invite))
     app.add_handler(CommandHandler("scenario", cmd_scenario))
     app.add_handler(CommandHandler("cost", cmd_cost))
