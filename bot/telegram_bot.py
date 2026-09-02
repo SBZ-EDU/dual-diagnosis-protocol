@@ -73,11 +73,13 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKe
 try:
     from caregiver_quiz import CAREGIVER_MODULES, SITE_ACADEMY_URL
     from patient_academy import PATIENT_MODULES
+    from money_academy import MONEY_MODULES, MONEY_COURSE
 except ImportError:  # اجرا/ایمپورت از ریشه‌ی مخزن
     from bot.caregiver_quiz import CAREGIVER_MODULES, SITE_ACADEMY_URL
     from bot.patient_academy import PATIENT_MODULES
+    from bot.money_academy import MONEY_MODULES, MONEY_COURSE
 
-ALL_MODULES = CAREGIVER_MODULES + PATIENT_MODULES
+ALL_MODULES = CAREGIVER_MODULES + PATIENT_MODULES + MONEY_MODULES
 try:
     from scenarios import (SCENARIOS, SPECIALIST_LABELS, COST_QUESTIONS,
                            COST_TIERS, build_eval_prompt)
@@ -168,6 +170,7 @@ TIPS = [
     ("رابطه، سپر و خطر", "رابطه‌ی صمیمی پایدار از عامل‌های حفاظتی عود است، اما تعارض شدید زوجین از پیش‌بین‌های مستندِ آن؛ اگر رابطه فرسوده شده، زوج‌درمانی مبتنی بر شواهد (BCT) بخشی از درمان است، نه تجمل.", "پروتکل · BCT · مثلث استرنبرگ", ["خانواده_و_همراه", "روان_درمانی"], "رابطه‌ی شما در این مسیر سپر بوده یا بار؟"),
     ("عشق در سال اول بهبودی", "توصیه‌ی رایج بالینی: در ۱۲ ماه اول بهبودی، تصمیم‌های بزرگ رابطه (ازدواج، طلاق، عشق تازه‌ی پرشور) را به تعویق بگذارید؛ عاطفه‌ی تازه گاهی نقش ماده را بازی می‌کند.", "پروتکل · راهنمای سال اول بهبودی", ["ترک_و_مصرف", "خانواده_و_همراه"], "این توصیه را قبلاً شنیده بودید؟"),
     ("مثلث خودِ یاور", "خواب کافی، یک دوستِ گفت‌وگو، یک سرگرمی فقط برای خودت — یاوری که فقط می‌دهد می‌سوزد و یاورِ سوخته به کسی کمک نمی‌کند.", "پروتکل · مراقبت از یاور · CRAFT", ["مراقبت_از_خود", "نقش_خانواده"], "امروز برای خودِ شما چه کرده‌اید؟"),
+    ("پول نقد نه، حمایت بله", "پولِ نقدِ بی‌برنامه به فرد درگیر اعتیاد، هم محرک مصرف است هم عادتِ وابستگی مالی می‌سازد؛ نیاز واقعی را مستقیم تأمین کنید (قبض، مایحتاج، هزینه‌ی درمان) و پول‌کشی را با تیم درمان هماهنگ کنید — منطقِ مدیریت تحکیم.", "پروتکل · کاهش آسیب · مدیریت تحکیم", ["خانواده_و_همراه", "کار_و_درآمد"], "به‌جای پول نقد، آخرین بار چطور کمک کردید؟"),
     ("مصاحبه انگیزشی، نه موعظه", "برای کاهش مصرف، گفت‌وگوی انگیزشی مؤثرتر از رویارویی است: پذیرش بی‌قضاوت و تقویت تغییر از خودِ فرد.", "پروتکل · مداخلات روانی", ["روان_درمانی", "ترک_و_مصرف"], "کدام جمله انگیزه‌ی تغییر را در عزیزتان بیشتر می‌کند؟"),
     ("خطر فوری؟ این کارها نکن", "در طرح یا قصد خودکشی فرد را تنها نگذارید، با توهم بحث نکنید و دارو را خودسرانه تغییر ندهید: اورژانس ۱۱۵ · اورژانس اجتماعی ۱۲۳.", "پروتکل · برنامه اجرایی فوری", ["بحران_و_ایمنی"], "شماره‌های اورژانس را کجا نوشته‌اید؟"),
     ("ترک شدید مواد", "ترک شدید با دلیریوم، تشنج یا بی‌ثباتی علائم حیاتی یک اورژانس پزشکی است؛ نه فقط «تحمل کردن».", "پروتکل · ارزیابی ترک", ["بحران_و_ایمنی", "ترک_و_مصرف"], "علائم ترک را می‌شناسید؟"),
@@ -330,6 +333,11 @@ NEWS_SERIES = [
 
 
 WORK_SERIES = [
+    ("پول نقد ندهید، نیاز واقعی را بدهید",
+     "پولِ نقدِ بی‌برنامه به عزیزِ درگیر اعتیاد، سوختِ مصرف و بذرِ عادتِ وابستگی است. کمکِ واقعی: پرداخت مستقیم قبض، خرید مایحتاج، هزینه‌ی درمان — و هماهنگیِ پول‌کشی با تیم درمان. همین منطقِ پاداش در درمانِ اعتیاد (مدیریت تحکیم) است.",
+     "پروتکل · مدیریت تحکیم · CRAFT",
+     ["کار_و_درآمد", "خانواده_و_همراه"],
+     "جای پول نقد، آخرین بار چه کمکی کردید؟"),
     ("بازگشت به کار: اول کار، بعد آموزش",
      "شواهد اشتغال پشتیبان (IPS) می‌گوید «اول شغل رقابتی، بعد آموزش» برای بیماران روانی جدی "
      "مؤثرتر از سال‌ها آماده‌سازی است؛ کار معنادار خودش درمان است.",
@@ -1125,7 +1133,8 @@ def _recommended_module(context: ContextTypes.DEFAULT_TYPE):
     text = hist
     money_kw = any(k in text for k in ("پول", "هزینه", "قیمت", "خرج", "بیکار", "کار", "شغل", "درآمد", "حقوق", "قرض"))
     if money_kw or p.get("money") == "high":
-        return "patient-work", "پرسش‌ها و نگرانی‌های مالی/کاری‌ات را دیدم — این درس دقیقاً برای همین است"
+        return "patient-work", ("پرسش‌ها و نگرانی‌های مالی/کاری‌ات را دیدم — این درس دقیقاً برای همین است؛ "
+                               "دوره‌ی ویدیویی «آکادمی پول و کار» را هم با /money ببین")
     if p.get("rel") == "spouse":
         return None, "چون همسر بیمار هستی، بخش «❤️ مثلث عشق در بهبودی» سایت و دستور /love را هم ببین"
     if p.get("age") in ("teen", "young"):
@@ -1153,12 +1162,14 @@ BTN_ROLE = "👤 نقش من"
 BTN_DAILY = "☀️ چک‌ین روزانه"
 BTN_MY_LESSONS = "🎓 درس‌های من"
 BTN_SOS = "🆘 کمک فوری"
+BTN_MONEY = "💰 پول و کار"
 
 # کیبورد ساده‌ی بیمار — طراحی بر پایه‌ی اصول درمان‌های دیجیتال تأییدشده (reSET/FDA):
 # گزینه‌ی کم، زبان ساده، تقویت مثبت، دسترسی یک‌ضربه‌ای به کمک.
 PATIENT_KEYBOARD = ReplyKeyboardMarkup(
     [[BTN_DAILY, BTN_MY_LESSONS],
      [BTN_TIP, BTN_SOS],
+     [BTN_MONEY],
      [BTN_ROLE, BTN_HELP]],
     resize_keyboard=True,
     is_persistent=True,
@@ -1175,6 +1186,7 @@ MAIN_KEYBOARD = ReplyKeyboardMarkup(
     [[BTN_RISK, BTN_CRITICAL],
      [BTN_TRAINING, BTN_SCENARIO],
      [BTN_TIP, BTN_REPORT],
+     [BTN_MONEY],
      [BTN_SECTIONS, BTN_ROLE],
      [BTN_HELP, BTN_INVITE]],
     resize_keyboard=True,
@@ -1199,6 +1211,7 @@ WELCOME_PATIENT = (
     "من همراه خودت هستم — ساده و بی‌پیچیدگی.\n\n"
     "☀️ هر روز دو پیام کوچک از من می‌گیری: صبح یادآور دارو، شب یک چکِ کوتاه.\n"
     "🎓 درس‌های من: ویدیوهای کوتاه با زیرنویس فارسی + آزمون ساده.\n"
+    "💰 پول و کار: ۱۰ ویدیوی علمی (TED) با زیرنویس فارسی + آزمون — /money\n"
     "💬 هر سؤالی داری همین‌جا بنویس؛ ساده جواب می‌گیری.\n"
     "🆘 روزِ سختی بود؟ دکمه‌ی «کمک فوری» پایین صفحه همیشه هست.\n\n"
     "⚠️ من جایگزین پزشک نیستم؛ در اورژانس: ۱۱۵ · ۱۲۳ · ۱۴۸۰"
@@ -1689,6 +1702,8 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await cmd_daily(update, context)
     if text == BTN_MY_LESSONS:
         return await cmd_training(update, context)
+    if text == BTN_MONEY:
+        return await cmd_money(update, context)
     if text == BTN_SOS:
         return await cmd_sos(update, context)
     if text == BTN_RISK:
@@ -1762,6 +1777,7 @@ async def cmd_training(update: Update, context: ContextTypes.DEFAULT_TYPE):
         head + "\n\n"
         f"پیشرفت شما: {done} از {len(modules)} ماژول\n\n"
         "⚠️ بخش‌های نشان‌دار (حیاتی) اولویت اول دارند. قبولی = حداقل ۸۰٪ (۸ از ۱۰).\n"
+        "💰 دوره‌ی ویدیویی «پول و کار» (۱۰ درس TED): /money\n"
         + ("پس از تکمیل همه، پیام جشن خودتان را می‌گیرید 🌟" if is_patient else
            "پس از تکمیل همه، گواهی با کد اعتبارسنجی از سایت مرکز صادر می‌شود."),
         reply_markup=InlineKeyboardMarkup(rows), parse_mode="Markdown")
@@ -1892,7 +1908,9 @@ async def _finish_training(update: Update, context: ContextTypes.DEFAULT_TYPE, m
     if score >= 80:
         prog = _academy_progress(context)
         prog[module["id"]] = score
-        track = PATIENT_MODULES if module["id"].startswith("patient-") else CAREGIVER_MODULES
+        track = (PATIENT_MODULES if module["id"].startswith("patient-")
+                 else MONEY_MODULES if module["id"].startswith("money-")
+                 else CAREGIVER_MODULES)
         done = sum(1 for m in track if m["id"] in prog)
         text = (f"✅ *ماژول «{module['title']}» تکمیل شد!*\n\n"
                 f"نمره: {score} از ۱۰۰ ({ok} از {total} درست)\n"
@@ -1902,6 +1920,10 @@ async def _finish_training(update: Update, context: ContextTypes.DEFAULT_TYPE, m
                 text += ("\n\n🎉 آفرین — همه‌ی درس‌های «دوره‌ی خودِ من» را گذراندید!\n"
                          "این بردِ بزرگِ خودتان است. هر هفته یک‌بار مرور کنید تا تازه بماند.\n"
                          "☀️ چک‌ین روزانه با /daily — و ما همیشه اینجاییم.")
+            elif track is MONEY_MODULES:
+                text += ("\n\n🎉 تبریک — همه‌ی درس‌های *آکادمی پول و کار* را گذراندید!\n"
+                         "قاعده‌ی طلایی را با هم تمرین کردید: پولِ نقدِ بی‌قاعده نه، حمایتِ واقعی بله.\n"
+                         "💰 مرور دوره: /money — 🎓 دوره‌های دیگر: /training")
             else:
                 text += ("\n\n🎉 تبریک! همه‌ی ماژول‌های *دوره‌ی آموزش همراه* را گذراندید.\n"
                          "برای دریافت گواهی با کد اعتبارسنجی، از بخش آکادمی سایت مرکز اقدام کنید:\n"
@@ -1917,6 +1939,23 @@ async def _finish_training(update: Update, context: ContextTypes.DEFAULT_TYPE, m
             "🎬 ویدیو و 📖 درس‌نامه را دوباره مرور کنید و ماژول را تکرار کنید:",
             reply_markup=InlineKeyboardMarkup(
                 [[InlineKeyboardButton("🔄 تلاش دوباره", callback_data=f"train:{module['id']}")]]))
+
+
+async def cmd_money(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """آکادمی پول و کار — دوره‌ی تکمیلی ویدیویی (۱۰ درس TED با زیرنویس فارسی)."""
+    prog = _academy_progress(context)
+    done = sum(1 for m in MONEY_MODULES if m["id"] in prog)
+    rows = []
+    for i, m in enumerate(MONEY_MODULES, 1):
+        mark = "✅ " if m["id"] in prog else ("⚠️ " if m.get("critical") else "▫️ ")
+        rows.append([InlineKeyboardButton(f"{mark}{i}️⃣ {m['title'][:34]}",
+                                          callback_data=f"train:{m['id']}")])
+    head = (f"💰 *{MONEY_COURSE['title']}*\n\n"
+            f"{MONEY_COURSE['intro']}\n\n"
+            f"پیشرفت شما: {done} از {len(MONEY_MODULES)} درس\n"
+            "⚠️ بخش‌های نشان‌دار (حیاتی) اولویت اول دارند. قبولی = حداقل ۸۰٪ (۸ از ۱۰).\n"
+            "پس از تکمیل همه، پیام جشن خودتان را می‌گیرید 🌟")
+    await send_long(update, head, reply_markup=InlineKeyboardMarkup(rows), parse_mode="Markdown")
 
 
 # ---------- نقش کاربر (بیمار / همراه / متخصص) ----------
@@ -3074,6 +3113,7 @@ async def _post_init(app: Application) -> None:
         BotCommand("role", "نقش شما: بیمار / همراه / همتا / متخصص"),
         BotCommand("profile", "سن، نسبت، کار و پول — پاسخ‌ها را شخصی می‌کند"),
         BotCommand("training", "دوره‌ی آموزش همراه + آزمون"),
+        BotCommand("money", "آکادمی پول و کار: ۱۰ ویدیوی علمی + آزمون"),
         BotCommand("invite", "لینک دعوت اختصاصی با نقش شما"),
         BotCommand("scenario", "آزمون سناریو + ارزیابی هوش مصنوعی"),
         BotCommand("cost", "ارزشیابی هزینه‌ی مراقبت"),
@@ -3130,6 +3170,7 @@ def main():
     app.add_handler(CallbackQueryHandler(on_role_button, pattern=r"^role:(patient|family|peer|doctor)$"))
     app.add_handler(CallbackQueryHandler(on_section_button, pattern=r"^sec:\d+$"))
     app.add_handler(CommandHandler("training", cmd_training))
+    app.add_handler(CommandHandler("money", cmd_money))
     app.add_handler(CommandHandler("invite", cmd_invite))
     app.add_handler(CommandHandler("scenario", cmd_scenario))
     app.add_handler(CommandHandler("cost", cmd_cost))
