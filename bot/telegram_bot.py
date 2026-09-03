@@ -74,12 +74,14 @@ try:
     from caregiver_quiz import CAREGIVER_MODULES, SITE_ACADEMY_URL
     from patient_academy import PATIENT_MODULES
     from money_academy import MONEY_MODULES, MONEY_COURSE
+    from family_protect import PROTECT_MODULES, PROTECT_COURSE
 except ImportError:  # اجرا/ایمپورت از ریشه‌ی مخزن
     from bot.caregiver_quiz import CAREGIVER_MODULES, SITE_ACADEMY_URL
     from bot.patient_academy import PATIENT_MODULES
     from bot.money_academy import MONEY_MODULES, MONEY_COURSE
+    from bot.family_protect import PROTECT_MODULES, PROTECT_COURSE
 
-ALL_MODULES = CAREGIVER_MODULES + PATIENT_MODULES + MONEY_MODULES
+ALL_MODULES = CAREGIVER_MODULES + PATIENT_MODULES + MONEY_MODULES + PROTECT_MODULES
 try:
     from scenarios import (SCENARIOS, SPECIALIST_LABELS, COST_QUESTIONS,
                            COST_TIERS, build_eval_prompt)
@@ -171,6 +173,7 @@ TIPS = [
     ("عشق در سال اول بهبودی", "توصیه‌ی رایج بالینی: در ۱۲ ماه اول بهبودی، تصمیم‌های بزرگ رابطه (ازدواج، طلاق، عشق تازه‌ی پرشور) را به تعویق بگذارید؛ عاطفه‌ی تازه گاهی نقش ماده را بازی می‌کند.", "پروتکل · راهنمای سال اول بهبودی", ["ترک_و_مصرف", "خانواده_و_همراه"], "این توصیه را قبلاً شنیده بودید؟"),
     ("مثلث خودِ یاور", "خواب کافی، یک دوستِ گفت‌وگو، یک سرگرمی فقط برای خودت — یاوری که فقط می‌دهد می‌سوزد و یاورِ سوخته به کسی کمک نمی‌کند.", "پروتکل · مراقبت از یاور · CRAFT", ["مراقبت_از_خود", "نقش_خانواده"], "امروز برای خودِ شما چه کرده‌اید؟"),
     ("پول نقد نه، حمایت بله", "پولِ نقدِ بی‌برنامه به فرد درگیر اعتیاد، هم محرک مصرف است هم عادتِ وابستگی مالی می‌سازد؛ نیاز واقعی را مستقیم تأمین کنید (قبض، مایحتاج، هزینه‌ی درمان) و پول‌کشی را با تیم درمان هماهنگ کنید — منطقِ مدیریت تحکیم.", "پروتکل · کاهش آسیب · مدیریت تحکیم", ["خانواده_و_همراه", "کار_و_درآمد"], "به‌جای پول نقد، آخرین بار چطور کمک کردید؟"),
+    ("بازیِ قربانی را بشناس", "فرد مصرف‌کننده برای گرفتن پول نقش می‌سازد: قربانیِ بیچاره، بیمارِ درمانده، قول‌دهنده‌ی همیشگی؛ نقش عوض می‌شود، هدف ثابت می‌ماند: پولِ نقد. پاسخِ سپر: مکث («فردا تصمیم می‌گیرم»)، نیازِ واقعی مستقیم، هماهنگی با درمانگر — دوره‌ی «سپر خانواده» با /protect.", "پروتکل · CRAFT · سپر خانواده", ["خانواده_و_همراه", "کار_و_درآمد"], "تا امروز کدام «نقش» را دیده‌اید: قربانی، وعده‌دهنده یا تهدیدگر؟"),
     ("مصاحبه انگیزشی، نه موعظه", "برای کاهش مصرف، گفت‌وگوی انگیزشی مؤثرتر از رویارویی است: پذیرش بی‌قضاوت و تقویت تغییر از خودِ فرد.", "پروتکل · مداخلات روانی", ["روان_درمانی", "ترک_و_مصرف"], "کدام جمله انگیزه‌ی تغییر را در عزیزتان بیشتر می‌کند؟"),
     ("خطر فوری؟ این کارها نکن", "در طرح یا قصد خودکشی فرد را تنها نگذارید، با توهم بحث نکنید و دارو را خودسرانه تغییر ندهید: اورژانس ۱۱۵ · اورژانس اجتماعی ۱۲۳.", "پروتکل · برنامه اجرایی فوری", ["بحران_و_ایمنی"], "شماره‌های اورژانس را کجا نوشته‌اید؟"),
     ("ترک شدید مواد", "ترک شدید با دلیریوم، تشنج یا بی‌ثباتی علائم حیاتی یک اورژانس پزشکی است؛ نه فقط «تحمل کردن».", "پروتکل · ارزیابی ترک", ["بحران_و_ایمنی", "ترک_و_مصرف"], "علائم ترک را می‌شناسید؟"),
@@ -338,6 +341,15 @@ WORK_SERIES = [
      "پروتکل · مدیریت تحکیم · CRAFT",
      ["کار_و_درآمد", "خانواده_و_همراه"],
      "جای پول نقد، آخرین بار چه کمکی کردید؟"),
+    ("زالو را زودتر بشناسید — بازی‌های پول‌گیری",
+     "قربانی‌نمایی، گناه‌کاری («تقصیر توست»)، وعده‌های چرخه‌ای، درخواستِ فوریِ نیمه‌شب — نقش‌ها عوض می‌شوند، "
+     "هدف ثابت می‌ماند: پولِ نقد. هر کمکِ بی‌مرز، آستانه‌ی درخواستِ بعدی را پایین می‌آورد و منابعِ خانواده را مثل زالو تخلیه می‌کند.\n"
+     "سپرِ خانواده: مکث («فردا تصمیم می‌گیرم») + تأمینِ مستقیمِ نیاز + هماهنگی با تیم درمان + قواعدِ نوشته‌شده. "
+     "با منطقِ CRAFT، پاداش را به حضور در درمان وصل کنید نه به وعده.\n"
+     "🎬 دوره‌ی کاملِ ۵ درسی با ویدیوهای TED: /protect",
+     "پروتکل · سپر خانواده · CRAFT · Wegscheider-Cruse",
+     ["خانواده_و_همراه", "کار_و_درآمد"],
+     "کدام بازی را بیشتر دیده‌اید: قربانی، وعده‌دهنده یا تهدیدگر؟"),
     ("بازگشت به کار: اول کار، بعد آموزش",
      "شواهد اشتغال پشتیبان (IPS) می‌گوید «اول شغل رقابتی، بعد آموزش» برای بیماران روانی جدی "
      "مؤثرتر از سال‌ها آماده‌سازی است؛ کار معنادار خودش درمان است.",
@@ -1132,6 +1144,10 @@ def _recommended_module(context: ContextTypes.DEFAULT_TYPE):
     hist = " ".join(context.user_data.get("recent_questions") or [])
     text = hist
     money_kw = any(k in text for k in ("پول", "هزینه", "قیمت", "خرج", "بیکار", "کار", "شغل", "درآمد", "حقوق", "قرض"))
+    protect_kw = any(k in text for k in ("قربانی", "زالو", "بازی", "گناه", "شرم", "دروغ", "تهدید", "نه بگو", "نه گفتن", "نگذار", "پول می‌خواه", "پول میخواد"))
+    if protect_kw or p.get("rel") in ("parent", "sibling", "spouse") and p.get("money") == "high":
+        return "protect-games", ("نشانه‌های بازی‌های پول‌گیری (قربانی‌نمایی، گناه‌کاری) را دیدم — "
+                                 "درسِ اولِ «سپر خانواده» دقیقاً برای همین است (/protect)")
     if money_kw or p.get("money") == "high":
         return "patient-work", ("پرسش‌ها و نگرانی‌های مالی/کاری‌ات را دیدم — این درس دقیقاً برای همین است؛ "
                                "دوره‌ی ویدیویی «آکادمی پول و کار» را هم با /money ببین")
@@ -1163,6 +1179,7 @@ BTN_DAILY = "☀️ چک‌ین روزانه"
 BTN_MY_LESSONS = "🎓 درس‌های من"
 BTN_SOS = "🆘 کمک فوری"
 BTN_MONEY = "💰 پول و کار"
+BTN_PROTECT = "🛡️ سپر خانواده"
 
 # کیبورد ساده‌ی بیمار — طراحی بر پایه‌ی اصول درمان‌های دیجیتال تأییدشده (reSET/FDA):
 # گزینه‌ی کم، زبان ساده، تقویت مثبت، دسترسی یک‌ضربه‌ای به کمک.
@@ -1186,7 +1203,7 @@ MAIN_KEYBOARD = ReplyKeyboardMarkup(
     [[BTN_RISK, BTN_CRITICAL],
      [BTN_TRAINING, BTN_SCENARIO],
      [BTN_TIP, BTN_REPORT],
-     [BTN_MONEY],
+     [BTN_MONEY, BTN_PROTECT],
      [BTN_SECTIONS, BTN_ROLE],
      [BTN_HELP, BTN_INVITE]],
     resize_keyboard=True,
@@ -1212,6 +1229,7 @@ WELCOME_PATIENT = (
     "☀️ هر روز دو پیام کوچک از من می‌گیری: صبح یادآور دارو، شب یک چکِ کوتاه.\n"
     "🎓 درس‌های من: ویدیوهای کوتاه با زیرنویس فارسی + آزمون ساده.\n"
     "💰 پول و کار: ۱۰ ویدیوی علمی (TED) با زیرنویس فارسی + آزمون + چالش سخت — /money\n"
+    "🛡️ سپر خانواده: حفاظت مالی در برابر بازی‌های پول‌گیری (قربانی‌نمایی، گناه‌کاری) — /protect\n"
     "🎬 جست‌وجوی ویدیو با کلیدواژه: /videos پس‌انداز\n"
     "💬 هر سؤالی داری همین‌جا بنویس؛ ساده جواب می‌گیری.\n"
     "🆘 روزِ سختی بود؟ دکمه‌ی «کمک فوری» پایین صفحه همیشه هست.\n\n"
@@ -1705,6 +1723,8 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await cmd_training(update, context)
     if text == BTN_MONEY:
         return await cmd_money(update, context)
+    if text == BTN_PROTECT:
+        return await cmd_protect(update, context)
     if text == BTN_SOS:
         return await cmd_sos(update, context)
     if text == BTN_RISK:
@@ -1779,6 +1799,7 @@ async def cmd_training(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"پیشرفت شما: {done} از {len(modules)} ماژول\n\n"
         "⚠️ بخش‌های نشان‌دار (حیاتی) اولویت اول دارند. قبولی = حداقل ۸۰٪ (۸ از ۱۰).\n"
         "💰 دوره‌ی ویدیویی «پول و کار» (۱۰ درس TED): /money\n"
+        "🛡️ ویژه‌ی خانواده‌ها — «سپر خانواده» (بازی‌های پول و مرزها): /protect\n"
         + ("پس از تکمیل همه، پیام جشن خودتان را می‌گیرید 🌟" if is_patient else
            "پس از تکمیل همه، گواهی با کد اعتبارسنجی از سایت مرکز صادر می‌شود."),
         reply_markup=InlineKeyboardMarkup(rows), parse_mode="Markdown")
@@ -1981,8 +2002,9 @@ async def _finish_training(update: Update, context: ContextTypes.DEFAULT_TYPE, m
                     f"نمره: {score} از ۱۰۰ ({ok} از {total} درست)\n"
                     f"⭐ +۱۰۰ امتیازِ چالش | مجموع: {pts} ({_points_level(pts)})")
             text += review
+            home_cb = "prothome" if module["id"].startswith("protect-") else "moneyhome"
             rows = [[InlineKeyboardButton("🔁 چالش دوباره", callback_data=f"chlng:{module['id']}"),
-                     InlineKeyboardButton("🎓 درس‌های دوره", callback_data="moneyhome")]]
+                     InlineKeyboardButton("🎓 درس‌های دوره", callback_data=home_cb)]]
             await send_long(update, text, reply_markup=InlineKeyboardMarkup(rows), parse_mode="Markdown")
         else:
             await update.effective_message.reply_text(
@@ -1997,6 +2019,7 @@ async def _finish_training(update: Update, context: ContextTypes.DEFAULT_TYPE, m
         prog[module["id"]] = score
         track = (PATIENT_MODULES if module["id"].startswith("patient-")
                  else MONEY_MODULES if module["id"].startswith("money-")
+                 else PROTECT_MODULES if module["id"].startswith("protect-")
                  else CAREGIVER_MODULES)
         done = sum(1 for m in track if m["id"] in prog)
         pts = _add_points(context, 50)
@@ -2011,8 +2034,12 @@ async def _finish_training(update: Update, context: ContextTypes.DEFAULT_TYPE, m
                          "☀️ چک‌ین روزانه با /daily — و ما همیشه اینجاییم.")
             elif track is MONEY_MODULES:
                 text += ("\n\n🎉 تبریک — همه‌ی درس‌های *آکادمی پول و کار* را گذراندید!\n"
-                         "قاعده‌ی طلایی را با هم تمرین کردید: پولِ نقدِ بی‌قاعده نه، حمایتِ واقعی بله.\n"
+                         "قاعده‌ی طلایی را با هم تمرین کردیم: پولِ نقدِ بی‌قاعده نه، حمایتِ واقعی بله.\n"
                          "💰 مرور دوره: /money — 🎓 دوره‌های دیگر: /training")
+            elif track is PROTECT_MODULES:
+                text += ("\n\n🎉 تبریک — همه‌ی درس‌های *سپر خانواده* را گذراندید!\n"
+                         "حالا دارید: بازی‌ها را می‌شناسید، مرزِ محبت‌آمیز می‌گذارید، با HAIL حرف می‌زنید و از خودتان مراقبت می‌کنید.\n"
+                         "🛡️ مرور دوره: /protect — 💰 دوره‌ی پول و کار: /money")
             else:
                 text += ("\n\n🎉 تبریک! همه‌ی ماژول‌های *دوره‌ی آموزش همراه* را گذراندید.\n"
                          "برای دریافت گواهی با کد اعتبارسنجی، از بخش آکادمی سایت مرکز اقدام کنید:\n"
@@ -2023,7 +2050,7 @@ async def _finish_training(update: Update, context: ContextTypes.DEFAULT_TYPE, m
         if module.get("challenge"):
             rows.append([InlineKeyboardButton("🔥 چالش سخت (۵ پرسش سخت‌تر)",
                                               callback_data=f"chlng:{module['id']}")])
-        if module["id"].startswith("money-"):
+        if module["id"].startswith(("money-", "protect-")):
             rows.append([InlineKeyboardButton("🤖 تحلیل هوشمندِ نقاط ضعف من",
                                               callback_data=f"aian:{module['id']}")])
         if rows:
@@ -2070,6 +2097,36 @@ async def cmd_money(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def on_money_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer()
     await cmd_money(update, context)
+
+
+async def cmd_protect(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """🛡️ سپر خانواده — حفاظت مالی و روانی خانواده در برابر بازی‌های پول‌گیری."""
+    prog = _academy_progress(context)
+    ch = context.user_data.get("challenges") or {}
+    done = sum(1 for m in PROTECT_MODULES if m["id"] in prog)
+    done_ch = sum(1 for m in PROTECT_MODULES if m["id"] in ch)
+    pts = _points(context)
+    rows = []
+    for i, m in enumerate(PROTECT_MODULES, 1):
+        mark = "✅ " if m["id"] in prog else ("⚠️ " if m.get("critical") else "▫️ ")
+        ch_mark = " 🔥" if m["id"] in ch else ""
+        rows.append([InlineKeyboardButton(f"{mark}{i}️⃣ {m['title'][:32]}{ch_mark}",
+                                          callback_data=f"train:{m['id']}")])
+    head = (f"🛡️ *{PROTECT_COURSE['title']}*\n\n"
+            f"{PROTECT_COURSE['intro']}\n\n"
+            f"پیشرفت شما: {done} از {len(PROTECT_MODULES)} درس"
+            + (f" | 🔥 چالش‌ها: {done_ch}" if done_ch else "") + "\n"
+            f"⭐ امتیاز شما: {pts} — سطح: {_points_level(pts)}\n"
+            "⚠️ درس‌های نشان‌دار (حیاتی) اولویت اول دارند. قبولی = حداقل ۸۰٪ (۸ از ۱۰).\n"
+            "🔥 بعد از قبولی هر درس، چالش سخت همان درس باز می‌شود.\n"
+            "🔍 جست‌وجوی ویدیوها: /videos مرز\n"
+            "برای خانواده‌ها، همراهان و هر کسی که پول و رابطه‌اش درگیرِ اعتیادِ عزیزی است.")
+    await send_long(update, head, reply_markup=InlineKeyboardMarkup(rows), parse_mode="Markdown")
+
+
+async def on_protect_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    await cmd_protect(update, context)
 
 
 async def on_train_ai_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3314,6 +3371,7 @@ async def _post_init(app: Application) -> None:
         BotCommand("profile", "سن، نسبت، کار و پول — پاسخ‌ها را شخصی می‌کند"),
         BotCommand("training", "دوره‌ی آموزش همراه + آزمون"),
         BotCommand("money", "آکادمی پول و کار: ۱۰ ویدیوی علمی + آزمون"),
+        BotCommand("protect", "🛡️ سپر خانواده: حفاظت مالی در برابر بازی‌های پول"),
         BotCommand("videos", "جست‌وجوی ویدیوهای آموزشی با کلیدواژه"),
         BotCommand("invite", "لینک دعوت اختصاصی با نقش شما"),
         BotCommand("scenario", "آزمون سناریو + ارزیابی هوش مصنوعی"),
@@ -3372,8 +3430,10 @@ def main():
     app.add_handler(CallbackQueryHandler(on_section_button, pattern=r"^sec:\d+$"))
     app.add_handler(CommandHandler("training", cmd_training))
     app.add_handler(CommandHandler("money", cmd_money))
+    app.add_handler(CommandHandler("protect", cmd_protect))
     app.add_handler(CommandHandler("videos", cmd_videos))
     app.add_handler(CallbackQueryHandler(on_money_home, pattern=r"^moneyhome$"))
+    app.add_handler(CallbackQueryHandler(on_protect_home, pattern=r"^prothome$"))
     app.add_handler(CallbackQueryHandler(on_train_challenge, pattern=r"^chlng:[a-z-]+$"))
     app.add_handler(CallbackQueryHandler(on_train_ai_analysis, pattern=r"^aian:[a-z-]+$"))
     app.add_handler(CommandHandler("invite", cmd_invite))
